@@ -76,6 +76,32 @@ app.message(async ({ message, say }) => {
         return;
     }
 
+    if (message.text && message.text.startsWith("rename file ") && message.channel_type === 'im' && message.user === USER_ID) {
+        const parts = message.text.replace("rename file ", "").trim().split(" ");
+
+        const [originalId, newId] = parts;
+        
+        await say(`Alrighty! :D Renaming ${originalId} to ${newId}...`);
+
+        try {
+            const file = await storage.getFile(APPWRITE_BUCKET_ID, originalId);
+            const fileBuffer = await storage.getFileDownload(APPWRITE_BUCKET_ID, originalId);
+            
+            const inputFile = InputFile.fromBuffer(Buffer.from(fileBuffer), file.name);
+            await storage.createFile(APPWRITE_BUCKET_ID, newId, inputFile, [appwrite.Permission.read(appwrite.Role.any())]);
+            
+            await storage.deleteFile(APPWRITE_BUCKET_ID, originalId);
+            
+            const shareFileUrl = `https://cdn.isitzoe.dev/${newId}`;
+            await say(`Done! File renamed to ${newId}. Check it out! ${shareFileUrl} :yay:`);
+
+        } catch (error) {
+            console.error('Error renaming file:', error);
+            await say(`Oh noe there was an error :(( :heavysob: ${error.message}`);
+        }
+        return;
+    }
+
     if (message.text && message.text.startsWith("delete file ") && message.channel_type === 'im' && message.user === USER_ID) {
         const fileId = message.text.replace("delete file ", "").trim();
         await say(`Taking care of it, boss.`);
@@ -410,7 +436,6 @@ app.event('member_joined_channel', async ({ event, client }) => {
     }
 });
 
-// Schedule daily ritual at 5 PM
 cron.schedule('0 20 * * *', async () => {
     try {
         await app.client.chat.postMessage({
