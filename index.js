@@ -5,6 +5,7 @@ const path = require('path');
 const axios = require('axios');
 const appwrite = require('node-appwrite');
 const { InputFile } = require('node-appwrite/file');
+const cron = require('node-cron');
 
 const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
@@ -71,6 +72,19 @@ app.message(async ({ message, say }) => {
             if (fs.existsSync(localFilePath)) {
                 fs.unlinkSync(localFilePath);
             }
+        }
+        return;
+    }
+
+    if (message.text && message.text.startsWith("delete file ") && message.channel_type === 'im' && message.user === USER_ID) {
+        const fileId = message.text.replace("delete file ", "").trim();
+        await say(`Taking care of it, boss.`);
+        try {
+            await storage.deleteFile(APPWRITE_BUCKET_ID, fileId);
+            await say(`📲 ${fileId} has been terminated, boss. My job here is done. :3`);
+        } catch (error) {
+            console.error('Error deleting file:', error);
+            await say(`Failed to delete file ${fileId} :heavysob: ${error.message}`);
         }
         return;
     }
@@ -393,6 +407,18 @@ app.event('member_joined_channel', async ({ event, client }) => {
         } catch (error) {
             console.error('Error adding user to group:', error);
         }
+    }
+});
+
+// Schedule daily ritual at 5 PM
+cron.schedule('0 20 * * *', async () => {
+    try {
+        await app.client.chat.postMessage({
+            channel: CHANNEL_ID,
+            text: `<@${USER_ID}> how was your day??? Go share on a yap pls :3`
+        });
+    } catch (error) {
+        console.error('Error sending daily ritual message:', error);
     }
 });
 
