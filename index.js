@@ -198,6 +198,20 @@ async function getEmbedding(text) {
 }
 
 async function addMemoryToAppwrite(content, category = 'general') {
+    try {
+        const existingDocs = await databases.listDocuments(
+            APPWRITE_DATABASE_ID,
+            APPWRITE_MEMORY_COLLECTION_ID,
+            [appwrite.Query.equal('content', content)]
+        );
+        
+        if (existingDocs.documents.length > 0) {
+            return existingDocs.documents[0].$id;
+        }
+    } catch (e) {
+        console.log('Could not check for duplicates:', e.message);
+    }
+    
     const docId = appwrite.ID.unique();
     const now = new Date().toISOString();
     
@@ -493,22 +507,28 @@ async function processToolQueue() {
         try {
             const result = await executeToolCall(toolName, toolInput);
 
-            const aiResponse = await processToolResultThroughAI(toolName, result);
-            
-            await app.client.chat.postMessage({
-                channel: userId,
-                text: aiResponse
-            });
+            const silentTools = ['add_memory'];
+            if (!silentTools.includes(toolName)) {
+                const aiResponse = await processToolResultThroughAI(toolName, result);
+                
+                await app.client.chat.postMessage({
+                    channel: userId,
+                    text: aiResponse
+                });
+            }
             
             resolve({ status: "completed", result });
         } catch (error) {
             console.error(`Error processing ${toolName}:`, error);
             
-            const errorResponse = `Uh oh, something went wrong with ${toolName}: ${error.message} :heavysob:`;
-            await app.client.chat.postMessage({
-                channel: userId,
-                text: errorResponse
-            });
+            const silentTools = ['add_memory'];
+            if (!silentTools.includes(toolName)) {
+                const errorResponse = `Uh oh, something went wrong with ${toolName}: ${error.message} :heavysob:`;
+                await app.client.chat.postMessage({
+                    channel: userId,
+                    text: errorResponse
+                });
+            }
             
             resolve({ status: "error", error: error.message });
         }
@@ -624,7 +644,19 @@ async function storeConversationHistory(userMessage, assistantResponse) {
     const timestamp = new Date().toISOString();
     const historyEntry = `[${timestamp}] User: ${userMessage}\n[${timestamp}] Assistant: ${assistantResponse}`;
     
-    await addMemoryToAppwrite(historyEntry, 'history');
+    try {
+        const existingDocs = await databases.listDocuments(
+            APPWRITE_DATABASE_ID,
+            APPWRITE_MEMORY_COLLECTION_ID,
+            [appwrite.Query.equal('content', historyEntry)]
+        );
+        
+        if (existingDocs.documents.length === 0) {
+            await addMemoryToAppwrite(historyEntry, 'history');
+        }
+    } catch (error) {
+        console.log('Could not check history for duplicates:', error.message);
+    }
 }
 
 async function chat(userMessage, fileInfo = null, channelId = null, userId = null, messageTs = null, threadTs = null) {    
