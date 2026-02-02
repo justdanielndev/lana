@@ -428,7 +428,7 @@ ${memoryContext}${olderHistoryContext}`;
     messages.push({ role: "user", content: userContent });
     
     let response = await axios.post(HC_CHAT_URL, {
-        model: "google/gemini-2.5-flash-preview",
+        model: "google/gemini-3-flash-preview",
         messages: messages,
         tools: AI_TOOLS,
         max_tokens: 1024
@@ -462,7 +462,7 @@ ${memoryContext}${olderHistoryContext}`;
         }
 
         response = await axios.post(HC_CHAT_URL, {
-            model: "google/gemini-2.5-flash-preview",
+            model: "google/gemini-3-flash-preview",
             messages: messages,
             tools: AI_TOOLS,
             max_tokens: 1024
@@ -476,7 +476,7 @@ ${memoryContext}${olderHistoryContext}`;
         assistantMessage = response.data.choices[0].message;
     }
 
-    return assistantMessage.content || "I processed your request! :3";
+    return assistantMessage.content || "Huh... No response was generated.";
 }
 
 app.message(async ({ message, say }) => {
