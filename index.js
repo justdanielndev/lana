@@ -77,6 +77,51 @@ const AI_TOOLS = [
     {
         type: "function",
         function: {
+            name: "send_message",
+            description: "Send a message to the DM channel or to a specific location. By default sends to thread (if in a thread) or as direct message. Use send_to_channel=true to send to the main channel instead.",
+            parameters: {
+                type: "object",
+                properties: {
+                    message: { type: "string", description: "The message to send" },
+                    send_to_channel: { type: "boolean", description: "If true, send to main channel. Otherwise sends to DM/thread" }
+                },
+                required: ["message"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "react",
+            description: "Add a reaction emoji to a message. Use this to react to the user's message or other messages.",
+            parameters: {
+                type: "object",
+                properties: {
+                    emoji: { type: "string", description: "The emoji name without colons (e.g., 'thumbsup', 'yay', 'real')" },
+                    message_ts: { type: "string", description: "The message timestamp to react to. If not provided, reacts to the current/last message" }
+                },
+                required: ["emoji"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "search_messages",
+            description: "Search for messages in the chat history. Returns relevant messages matching the query.",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: { type: "string", description: "What to search for in messages" },
+                    limit: { type: "number", description: "Maximum number of results (default 5)" }
+                },
+                required: ["query"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
             name: "yap",
             description: "Post a yap (message) to Zoe's yapping channel. Use this when the user wants to share something with their cultists (channel members :3)",
             parameters: {
@@ -256,6 +301,76 @@ async function queryMemories(query, topK = 5) {
     }
 }
 
+let currentMessageContext = {
+    userId: null,
+    channelId: null,
+    messageTs: null,
+    threadTs: null,
+    history: []
+};
+
+async function executeImmediateTool(toolName, toolInput, context) {
+    try {
+        switch (toolName) {
+            case 'send_message': {
+                if (!context.threadTs) {
+                    return { success: false, message: "Can only send messages in threads" };
+                }
+                
+                const broadcast = toolInput.send_to_channel || false;
+                let postConfig = {
+                    channel: context.userId,
+                    text: toolInput.message,
+                    thread_ts: context.threadTs
+                };
+                
+                if (broadcast) {
+                    postConfig.reply_broadcast = true;
+                }
+                
+                await app.client.chat.postMessage(postConfig);
+                return { success: true, message: "Message sent!" };
+            }
+            
+            case 'react': {
+                const targetTs = toolInput.message_ts || context.messageTs;
+                if (!targetTs) return { success: false, message: "No message to react to" };
+                
+                await app.client.reactions.add({
+                    channel: context.channelId,
+                    name: toolInput.emoji,
+                    timestamp: targetTs
+                });
+                return { success: true, message: `Reacted with :${toolInput.emoji}:` };
+            }
+            
+            case 'search_messages': {
+                const limit = toolInput.limit || 5;
+                const query = toolInput.query.toLowerCase();
+                
+                const results = context.history.filter(msg => 
+                    msg.content.toLowerCase().includes(query)
+                ).slice(0, limit);
+                
+                if (results.length === 0) {
+                    return { success: true, message: `No messages found matching "${toolInput.query}"` };
+                }
+                
+                const formatted = results.map((msg, i) => 
+                    `${i + 1}. [${msg.role}]: ${msg.content.substring(0, 100)}...`
+                ).join('\n');
+                
+                return { success: true, results: formatted };
+            }
+            
+            default:
+                return { success: false, message: `Unknown immediate tool: ${toolName}` };
+        }
+    } catch (error) {
+        return { success: false, message: `Error: ${error.message}` };
+    }
+}
+
 async function executeToolCall(toolName, toolInput) {
 
     switch (toolName) {
@@ -404,7 +519,8 @@ async function processToolQueue() {
 
 async function processToolResultThroughAI(toolName, toolResult) {
     const prompt = `A tool just completed. Tool: "${toolName}", Result: ${JSON.stringify(toolResult)}. 
-Send a brief, natural response about what happened. Keep it short and use :3 if appropriate.`;
+Send a brief, natural response about what happened. Keep it short and use :3 if appropriate.
+You're in Slack, so you need to use its markdown if you need to use formatting. Links for example are like <link|text>.`;
     
     const response = await axios.post(HC_CHAT_URL, {
         model: "google/gemini-3-flash-preview",
@@ -423,23 +539,81 @@ Send a brief, natural response about what happened. Keep it short and use :3 if 
     return response.data.choices[0].message.content || `Finished ${toolName}!`;
 }
 
-async function getSlackHistory(channelId, limit = 20) {
+async function getSlackHistory(channelId, limit = 20, threadTs = null) {
     try {
-        const result = await app.client.conversations.history({
-            channel: channelId,
-            limit: limit
-        });
-        
-        const messages = result.messages
-            .reverse()
-            .map(msg => ({
+        let messages = [];
+        let collectedItems = 0;
+        let cursor = null;
+
+        if (threadTs) {
+            const threadResult = await app.client.conversations.replies({
+                channel: channelId,
+                ts: threadTs,
+                limit: 200
+            });
+
+            const threadMessages = threadResult.messages.slice(1, 11);
+            messages = threadMessages.map(msg => ({
                 role: msg.bot_id ? "assistant" : "user",
                 content: msg.text || "",
-                timestamp: msg.ts
-            }))
-            .filter(msg => msg.content);
-        
-        return messages;
+                timestamp: msg.ts,
+                type: "thread_reply"
+            }));
+
+            return messages.filter(msg => msg.content);
+        }
+
+        let allMessages = [];
+        let hasMore = true;
+
+        while (hasMore && collectedItems < limit * 3) {
+            const result = await app.client.conversations.history({
+                channel: channelId,
+                limit: 50,
+                cursor: cursor
+            });
+
+            allMessages = allMessages.concat(result.messages || []);
+            cursor = result.response_metadata?.next_cursor;
+            hasMore = !!cursor && cursor !== '';
+            collectedItems += result.messages?.length || 0;
+        }
+
+        for (const msg of allMessages.reverse()) {
+            if (messages.length >= limit) break;
+
+            messages.push({
+                role: msg.bot_id ? "assistant" : "user",
+                content: msg.text || "",
+                timestamp: msg.ts,
+                type: "main"
+            });
+
+            if (msg.thread_ts === msg.ts && msg.reply_count > 0) {
+                try {
+                    const threadResult = await app.client.conversations.replies({
+                        channel: channelId,
+                        ts: msg.ts,
+                        limit: 200
+                    });
+
+                    const threadReplies = threadResult.messages.slice(1, 11);
+                    for (const reply of threadReplies) {
+                        messages.push({
+                            role: reply.bot_id ? "assistant" : "user",
+                            content: reply.text || "",
+                            timestamp: reply.ts,
+                            type: "thread_reply",
+                            parent_ts: msg.ts
+                        });
+                    }
+                } catch (e) {
+                    console.log('Could not fetch thread:', e.message);
+                }
+            }
+        }
+
+        return messages.filter(msg => msg.content).slice(0, limit);
     } catch (error) {
         console.error('Error fetching Slack history:', error);
         return [];
@@ -453,7 +627,7 @@ async function storeConversationHistory(userMessage, assistantResponse) {
     await addMemoryToAppwrite(historyEntry, 'history');
 }
 
-async function chat(userMessage, fileInfo = null, channelId = null, userId = null) {    
+async function chat(userMessage, fileInfo = null, channelId = null, userId = null, messageTs = null, threadTs = null) {    
     const memories = await queryMemories(userMessage, 5);
     const historicalContext = await queryMemories(userMessage, 10);
     
@@ -477,14 +651,19 @@ You have access to long-term memory - information Zoe has shared with you in pas
 
 You can:
 1. Remember things for Zoe (use add_memory tool for important info)
-2. Post yaps (messages) to Zoe's channel for her followers
-3. Manage CDN files (upload, rename, delete)
+2. Send messages (send_message tool - ALWAYS goes to thread, use send_to_channel=true to broadcast to main chat view)
+3. React to messages (react tool)
+4. Search message history (search_messages tool)
+5. Post yaps (messages) to Zoe's yapping channel
+6. Manage CDN files (upload, rename, delete)
 
-When Zoe shares something important about herself, her preferences, projects, or anything you should remember, use the add_memory tool to save it.
+About tools:
+- send_message, react, search_messages: Execute immediately
+- add_memory, yap, cdn_*: These are queued async operations - tell the user you're queuing them
 
-When Zoe wants to yap/share something with her followers, use the yap tool.
+When Zoe shares something important about herself, use add_memory to save it.
 
-IMPORTANT: If a tool is called, immediately tell the user it's queued and you'll notify them when done. Don't wait for the tool to finish, just return a message saying it's queued.
+You can send multiple messages in one response - just call send_message multiple times with different content.
 
 You're in the Hack Club Slack workspace, and as such you can use workspace emojis. There are thousands, though, so you can't know them all. Here are some (which you can use instead of standard emojis):
 - :real: (text showing "real")
@@ -511,20 +690,29 @@ ${memoryContext}${olderHistoryContext}`;
 
     const messages = [{ role: "system", content: systemPrompt }];
     
+    let slackHistory = [];
     if (channelId) {
-        const recentHistory = await getSlackHistory(channelId, 20);
-        for (const msg of recentHistory.slice(0, -1)) {
+        slackHistory = await getSlackHistory(channelId, 20, threadTs);
+        for (const msg of slackHistory) {
             messages.push({ role: msg.role, content: msg.content });
         }
     }
     
     messages.push({ role: "user", content: userContent });
     
+    currentMessageContext = {
+        userId,
+        channelId,
+        messageTs,
+        threadTs,
+        history: slackHistory
+    };
+    
     let response = await axios.post(HC_CHAT_URL, {
         model: "google/gemini-3-flash-preview",
         messages: messages,
         tools: AI_TOOLS,
-        max_tokens: 1024
+        max_tokens: 2048
     }, {
         headers: {
             'Authorization': `Bearer ${HC_API_KEY}`,
@@ -536,17 +724,52 @@ ${memoryContext}${olderHistoryContext}`;
 
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         messages.push(assistantMessage);
+        
+        const immediateTools = ['send_message', 'react', 'search_messages'];
+        const queuedTools = ['add_memory', 'yap', 'cdn_upload', 'cdn_rename', 'cdn_delete'];
 
         for (const toolCall of assistantMessage.tool_calls) {
             try {
                 const args = JSON.parse(toolCall.function.arguments);
-                queueToolExecution(toolCall.function.name, args, userId, channelId);
+                let toolResult;
+                
+                if (immediateTools.includes(toolCall.function.name)) {
+                    toolResult = await executeImmediateTool(toolCall.function.name, args, currentMessageContext);
+                } else if (queuedTools.includes(toolCall.function.name)) {
+                    queueToolExecution(toolCall.function.name, args, userId, channelId);
+                    toolResult = { queued: true, message: `${toolCall.function.name} queued` };
+                } else {
+                    toolResult = { success: false, message: `Unknown tool: ${toolCall.function.name}` };
+                }
+
+                messages.push({
+                    role: "tool",
+                    tool_call_id: toolCall.id,
+                    content: JSON.stringify(toolResult)
+                });
             } catch (error) {
-                console.error(`Error queuing tool:`, error);
+                console.error(`Error processing tool:`, error);
+                messages.push({
+                    role: "tool",
+                    tool_call_id: toolCall.id,
+                    content: JSON.stringify({ success: false, message: error.message })
+                });
             }
         }
 
-        return assistantMessage.content || "Working on it!";
+        response = await axios.post(HC_CHAT_URL, {
+            model: "google/gemini-3-flash-preview",
+            messages: messages,
+            tools: AI_TOOLS,
+            max_tokens: 2048
+        }, {
+            headers: {
+                'Authorization': `Bearer ${HC_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        assistantMessage = response.data.choices[0].message;
     }
 
     return assistantMessage.content || "Huh... No response was generated.";
@@ -577,12 +800,41 @@ app.message(async ({ message, say }) => {
         let response;
         
         try {
-            response = await chat(userText, fileInfo, message.channel, message.user);
-            await say(response);
+            response = await chat(
+                userText, 
+                fileInfo, 
+                message.channel, 
+                message.user,
+                message.ts,
+                message.thread_ts
+            );
+            
+            if (message.thread_ts) {
+                await say({
+                    text: response,
+                    thread_ts: message.thread_ts
+                });
+            } else {
+                await say({
+                    text: response,
+                    thread_ts: message.ts
+                });
+            }
         } catch (error) {
             console.error('AI Error:', error);
             response = `[ERROR] ${error.message}`;
-            await say(`Something went wrong :heavysob: ${error.message}`);
+            
+            if (message.thread_ts) {
+                await say({
+                    text: `Something went wrong :heavysob: ${error.message}`,
+                    thread_ts: message.thread_ts
+                });
+            } else {
+                await say({
+                    text: `Something went wrong :heavysob: ${error.message}`,
+                    thread_ts: message.ts
+                });
+            }
         }
         
         try {
@@ -592,6 +844,8 @@ app.message(async ({ message, say }) => {
         }
     }
 });
+
+
 
 app.action('reply_button_click', async ({ body, ack, client }) => {
     await ack();
