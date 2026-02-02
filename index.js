@@ -44,6 +44,19 @@ const HC_EMBEDDINGS_URL = 'https://ai.hackclub.com/proxy/v1/embeddings';
 
 let pendingUploads = {};
 let lastSyncTime = null;
+let toolQueue = [];
+let isProcessingQueue = false;
+
+const REFUSAL_MESSAGES = [
+    "Can't talk here, nice try tho :loll: If you want to reply to a yap, pls do that in the channel.",
+    "Can't talk to you :sadge: If you want to reply to a yap, pls do that in the channel.",
+    "You're not allowed to talk to me here :shrug: If you want to reply to a yap, pls do that in the channel.",
+    "Sorry bestie, this chat's for Zoe only :3 If you want to reply to a yap, pls do that in the channel.",
+];
+
+function getRandomRefusal() {
+    return REFUSAL_MESSAGES[Math.floor(Math.random() * REFUSAL_MESSAGES.length)];
+}
 
 const AI_TOOLS = [
     {
@@ -235,9 +248,7 @@ async function queryMemories(query, topK = 5) {
             category: r.metadata?.category,
             score: r.score
         })).filter(r => r.content);
-        
-        memories.forEach((m, i) => console.log(`  ${i+1}. [${m.category}] score=${m.score.toFixed(3)} "${m.content?.substring(0, 40)}..."`));
-        
+                
         return memories;
     } catch (error) {
         console.error('[Query] Error:', error);
@@ -246,12 +257,10 @@ async function queryMemories(query, topK = 5) {
 }
 
 async function executeToolCall(toolName, toolInput) {
-    console.log(`Tool input:`, JSON.stringify(toolInput, null, 2));
-    
+
     switch (toolName) {
         case 'add_memory': {
             const docId = await addMemoryToAppwrite(toolInput.content, toolInput.category);
-            console.log(`add_memory completed: ${docId}`);
             return { success: true, message: `Memory saved with ID ${docId}. Will be synced to vector DB shortly.` };
         }
         
@@ -311,7 +320,6 @@ async function executeToolCall(toolName, toolInput) {
             fs.unlinkSync(localFilePath);
             
             const shareFileUrl = `https://cdn.isitzoe.dev/${appwriteFile.$id}`;
-            console.log(`CDN upload complete: ${shareFileUrl}`);
             return { success: true, message: `File uploaded! URL: ${shareFileUrl}` };
         }
         
@@ -330,13 +338,11 @@ async function executeToolCall(toolName, toolInput) {
             await storage.deleteFile(APPWRITE_BUCKET_ID, toolInput.original_id);
             
             const shareFileUrl = `https://cdn.isitzoe.dev/${toolInput.new_id}`;
-            console.log(`CDN rename complete: ${shareFileUrl}`);
             return { success: true, message: `File renamed! New URL: ${shareFileUrl}` };
         }
         
         case 'cdn_delete': {
             await storage.deleteFile(APPWRITE_BUCKET_ID, toolInput.file_id);
-            console.log(`CDN delete complete`);
             return { success: true, message: `File ${toolInput.file_id} deleted.` };
         }
         
@@ -344,6 +350,77 @@ async function executeToolCall(toolName, toolInput) {
             console.log(`Unknown tool: ${toolName}`);
             return { success: false, message: `Unknown tool: ${toolName}` };
     }
+}
+
+async function queueToolExecution(toolName, toolInput, userId, channelId) {
+    return new Promise((resolve) => {
+        toolQueue.push({
+            toolName,
+            toolInput,
+            userId,
+            channelId,
+            resolve,
+            timestamp: Date.now()
+        });
+        processToolQueue();
+    });
+}
+
+async function processToolQueue() {
+    if (isProcessingQueue || toolQueue.length === 0) return;
+    
+    isProcessingQueue = true;
+    
+    while (toolQueue.length > 0) {
+        const job = toolQueue.shift();
+        const { toolName, toolInput, userId, channelId, resolve } = job;
+                
+        try {
+            const result = await executeToolCall(toolName, toolInput);
+
+            const aiResponse = await processToolResultThroughAI(toolName, result);
+            
+            await app.client.chat.postMessage({
+                channel: userId,
+                text: aiResponse
+            });
+            
+            resolve({ status: "completed", result });
+        } catch (error) {
+            console.error(`Error processing ${toolName}:`, error);
+            
+            const errorResponse = `Uh oh, something went wrong with ${toolName}: ${error.message} :heavysob:`;
+            await app.client.chat.postMessage({
+                channel: userId,
+                text: errorResponse
+            });
+            
+            resolve({ status: "error", error: error.message });
+        }
+    }
+    
+    isProcessingQueue = false;
+}
+
+async function processToolResultThroughAI(toolName, toolResult) {
+    const prompt = `A tool just completed. Tool: "${toolName}", Result: ${JSON.stringify(toolResult)}. 
+Send a brief, natural response about what happened. Keep it short and use :3 if appropriate.`;
+    
+    const response = await axios.post(HC_CHAT_URL, {
+        model: "google/gemini-3-flash-preview",
+        messages: [
+            { role: "system", content: "You're Zoe's AI assistant. Respond briefly to tool results." },
+            { role: "user", content: prompt }
+        ],
+        max_tokens: 256
+    }, {
+        headers: {
+            'Authorization': `Bearer ${HC_API_KEY}`,
+            'Content-Type': 'application/json'
+        }
+    });
+    
+    return response.data.choices[0].message.content || `Finished ${toolName}!`;
 }
 
 async function getSlackHistory(channelId, limit = 20) {
@@ -376,7 +453,7 @@ async function storeConversationHistory(userMessage, assistantResponse) {
     await addMemoryToAppwrite(historyEntry, 'history');
 }
 
-async function chat(userMessage, fileInfo = null, channelId = null) {    
+async function chat(userMessage, fileInfo = null, channelId = null, userId = null) {    
     const memories = await queryMemories(userMessage, 5);
     const historicalContext = await queryMemories(userMessage, 10);
     
@@ -406,6 +483,8 @@ You can:
 When Zoe shares something important about herself, her preferences, projects, or anything you should remember, use the add_memory tool to save it.
 
 When Zoe wants to yap/share something with her followers, use the yap tool.
+
+IMPORTANT: If a tool is called, immediately tell the user it's queued and you'll notify them when done. Don't wait for the tool to finish, just return a message saying it's queued.
 
 You're in the Hack Club Slack workspace, and as such you can use workspace emojis. There are thousands, though, so you can't know them all. Here are some (which you can use instead of standard emojis):
 - :real: (text showing "real")
@@ -456,46 +535,31 @@ ${memoryContext}${olderHistoryContext}`;
     let assistantMessage = response.data.choices[0].message;
 
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-        console.log(`Processing ${assistantMessage.tool_calls.length} tool call(s)`);
         messages.push(assistantMessage);
 
         for (const toolCall of assistantMessage.tool_calls) {
-            let toolResult;
             try {
                 const args = JSON.parse(toolCall.function.arguments);
-                toolResult = await executeToolCall(toolCall.function.name, args);
+                queueToolExecution(toolCall.function.name, args, userId, channelId);
             } catch (error) {
-                toolResult = { success: false, message: `Error: ${error.message}` };
+                console.error(`Error queuing tool:`, error);
             }
-
-            messages.push({
-                role: "tool",
-                tool_call_id: toolCall.id,
-                content: JSON.stringify(toolResult)
-            });
         }
 
-        response = await axios.post(HC_CHAT_URL, {
-            model: "google/gemini-3-flash-preview",
-            messages: messages,
-            tools: AI_TOOLS,
-            max_tokens: 1024
-        }, {
-            headers: {
-                'Authorization': `Bearer ${HC_API_KEY}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        assistantMessage = response.data.choices[0].message;
+        return assistantMessage.content || "Working on it!";
     }
 
     return assistantMessage.content || "Huh... No response was generated.";
 }
 
 app.message(async ({ message, say }) => {
-    if (message.channel_type === 'im' && message.user === USER_ID) {
+    if (message.channel_type === 'im') {
         if (!message.text && !message.files) {
+            return;
+        }
+
+        if (message.user !== USER_ID) {
+            await say(getRandomRefusal());
             return;
         }
 
@@ -513,7 +577,7 @@ app.message(async ({ message, say }) => {
         let response;
         
         try {
-            response = await chat(userText, fileInfo, message.channel);
+            response = await chat(userText, fileInfo, message.channel, message.user);
             await say(response);
         } catch (error) {
             console.error('AI Error:', error);
