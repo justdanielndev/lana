@@ -167,10 +167,7 @@ async function syncMemoriesToVector() {
         );
 
         if (unsyncedDocs.documents.length === 0) {
-            console.log('No unsynced memories found');
         } else {
-            console.log(`Found ${unsyncedDocs.documents.length} unsynced memories`);
-
             for (const doc of unsyncedDocs.documents) {
                 const embedding = await getEmbedding(doc.content);
                 await vectorIndex.upsert({
@@ -195,7 +192,6 @@ async function syncMemoriesToVector() {
         await syncDeletions();
 
         lastSyncTime = new Date();
-        console.log(`Sync completed at ${lastSyncTime.toISOString()}`);
     } catch (error) {
         console.error('[Sync] Error:', error);
     }
@@ -217,12 +213,10 @@ async function syncDeletions() {
         
         if (toDelete.length > 0) {
             await vectorIndex.delete(toDelete);
-            console.log(`[Deleted: ${toDelete.join(', ')}`);
         } else {
-            console.log(' No orphaned vectors found');
         }
     } catch (error) {
-        console.error('[Sync] Error checking deletions:', error);
+        console.error('Error checking deletions:', error);
     }
 }
 
@@ -253,7 +247,6 @@ async function queryMemories(query, topK = 5) {
 }
 
 async function executeToolCall(toolName, toolInput) {
-    console.log(`Executing tool: ${toolName}`);
     console.log(`Tool input:`, JSON.stringify(toolInput, null, 2));
     
     switch (toolName) {
@@ -264,7 +257,6 @@ async function executeToolCall(toolName, toolInput) {
         }
         
         case 'yap': {
-            console.log(`Posting yap to channel ${CHANNEL_ID}`);
             await app.client.chat.postMessage({
                 channel: CHANNEL_ID,
                 text: `<!subteam^S09LUMPUBU0|cultists> *New yap! Go read it :tw_knife:*\n\n${toolInput.message}`
@@ -289,16 +281,13 @@ async function executeToolCall(toolName, toolInput) {
                     }
                 ]
             });
-            console.log('Yap posted successfully');
             return { success: true, message: "Yap posted successfully!" };
         }
         
         case 'cdn_upload': {
-            console.log(`CDN upload: ${toolInput.file_id}`);
             const localFilePath = path.join(__dirname, 'cache', toolInput.file_id + path.extname(toolInput.original_name));
             const writer = fs.createWriteStream(localFilePath);
             
-            console.log(`Downloading from Slack...`);
             const response = await axios({
                 url: toolInput.slack_file_url,
                 method: 'GET',
@@ -312,7 +301,6 @@ async function executeToolCall(toolName, toolInput) {
                 writer.on('error', reject);
             });
 
-            console.log(`Uploading to Appwrite...`);
             const inputFile = InputFile.fromPath(localFilePath, toolInput.original_name);
             const appwriteFile = await storage.createFile(
                 APPWRITE_BUCKET_ID, 
@@ -329,7 +317,6 @@ async function executeToolCall(toolName, toolInput) {
         }
         
         case 'cdn_rename': {
-            console.log(`CDN rename: ${toolInput.original_id} -> ${toolInput.new_id}`);
             const file = await storage.getFile(APPWRITE_BUCKET_ID, toolInput.original_id);
             const fileBuffer = await storage.getFileDownload(APPWRITE_BUCKET_ID, toolInput.original_id);
             
@@ -349,7 +336,6 @@ async function executeToolCall(toolName, toolInput) {
         }
         
         case 'cdn_delete': {
-            console.log(`CDN delete: ${toolInput.file_id}`);
             await storage.deleteFile(APPWRITE_BUCKET_ID, toolInput.file_id);
             console.log(`CDN delete complete`);
             return { success: true, message: `File ${toolInput.file_id} deleted.` };
@@ -362,7 +348,6 @@ async function executeToolCall(toolName, toolInput) {
 }
 
 async function getSlackHistory(channelId, limit = 20) {
-    console.log(`Fetching last ${limit} messages from Slack channel ${channelId}`);
     try {
         const result = await app.client.conversations.history({
             channel: channelId,
@@ -378,7 +363,6 @@ async function getSlackHistory(channelId, limit = 20) {
             }))
             .filter(msg => msg.content);
         
-        console.log(`Retrieved ${messages.length} messages`);
         return messages;
     } catch (error) {
         console.error('Error fetching Slack history:', error);
@@ -504,7 +488,6 @@ app.message(async ({ message, say }) => {
         let fileInfo = null;
         if (message.files && message.files.length > 0) {
             const file = message.files[0];
-            console.log(`[Slack] File attached: ${file.name}`);
             fileInfo = {
                 name: file.name,
                 url: file.url_private_download,
@@ -752,7 +735,7 @@ app.event('member_joined_channel', async ({ event, client }) => {
                 text: `Hey <@${event.user}>! Welcome to the Zoe's yapping channel :D You've been added to the ping group :3 now you can't leave :neocat_evil:\n\n(Joking, you can leave anytime by just removing yourself from the group in Slack settings)`,
             });
 
-            console.log(`Added user ${event.user} to cultists group.`);
+            console.log(`Added user ${event.user} to cultists.`);
 
         } catch (error) {
             console.error('Error adding user to group:', error);
