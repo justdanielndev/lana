@@ -4,13 +4,16 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@slack/bolt": "^4.6.0",
+    "@upstash/vector": "^1.2.0",
+    "axios": "^1.7.9",
     "dotenv": "^17.2.3",
     "node-appwrite": "^21.0.0",
     "node-cron": "^4.2.1"

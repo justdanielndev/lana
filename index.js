@@ -6,6 +6,7 @@ const axios = require('axios');
 const appwrite = require('node-appwrite');
 const { InputFile } = require('node-appwrite/file');
 const cron = require('node-cron');
+const { Index } = require('@upstash/vector');
 
 const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
@@ -20,6 +21,8 @@ const APPWRITE_ENDPOINT = process.env.APPWRITE_ENDPOINT;
 const APPWRITE_PROJECT_ID = process.env.APPWRITE_PROJECT_ID;
 const APPWRITE_API_KEY = process.env.APPWRITE_API_KEY;
 const APPWRITE_BUCKET_ID = process.env.APPWRITE_BUCKET_ID;
+const APPWRITE_DATABASE_ID = process.env.APPWRITE_DATABASE_ID;
+const APPWRITE_MEMORY_COLLECTION_ID = process.env.APPWRITE_MEMORY_COLLECTION_ID || 'memory-items';
 
 const client = new appwrite.Client();
 client
@@ -28,27 +31,279 @@ client
     .setKey(APPWRITE_API_KEY);
 
 const storage = new appwrite.Storage(client);
+const databases = new appwrite.Databases(client);
+
+const vectorIndex = new Index({
+    url: process.env.UPSTASH_VECTOR_URL,
+    token: process.env.UPSTASH_VECTOR_TOKEN,
+});
+
+const HC_API_KEY = process.env.HC_API_KEY;
+const HC_CHAT_URL = 'https://ai.hackclub.com/proxy/v1/chat/completions';
+const HC_EMBEDDINGS_URL = 'https://ai.hackclub.com/proxy/v1/embeddings';
 
 let pendingUploads = {};
+let lastSyncTime = null;
 
-app.message(async ({ message, say }) => {
+const AI_TOOLS = [
+    {
+        type: "function",
+        function: {
+            name: "add_memory",
+            description: "Store a piece of information in long-term memory. Use this when the user tells you something about themselves, their preferences, projects, or anything you should remember for future conversations.",
+            parameters: {
+                type: "object",
+                properties: {
+                    content: { type: "string", description: "The information to remember" },
+                    category: { type: "string", description: "Category of the memory, can be anything (e.g., 'preference', 'project', 'fact', 'reminder')" }
+                },
+                required: ["content", "category"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "yap",
+            description: "Post a yap (message) to Zoe's yapping channel. Use this when the user wants to share something with their cultists (channel members :3)",
+            parameters: {
+                type: "object",
+                properties: {
+                    message: { type: "string", description: "The message to yap" }
+                },
+                required: ["message"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "cdn_upload",
+            description: "Upload a file to the CDN. The user must have attached a file to their message.",
+            parameters: {
+                type: "object",
+                properties: {
+                    file_id: { type: "string", description: "The custom ID to use for the file on CDN, ask the user for this" },
+                    slack_file_url: { type: "string", description: "The Slack file URL to download from" },
+                    original_name: { type: "string", description: "The original filename" }
+                },
+                required: ["file_id", "slack_file_url", "original_name"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "cdn_rename",
+            description: "Rename a file on the CDN",
+            parameters: {
+                type: "object",
+                properties: {
+                    original_id: { type: "string", description: "The current file ID on CDN" },
+                    new_id: { type: "string", description: "The new file ID" }
+                },
+                required: ["original_id", "new_id"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "cdn_delete",
+            description: "Delete a file from the CDN",
+            parameters: {
+                type: "object",
+                properties: {
+                    file_id: { type: "string", description: "The file ID to delete" }
+                },
+                required: ["file_id"]
+            }
+        }
+    }
+];
 
-    if (pendingUploads.url && message.channel_type === 'im' && message.user === USER_ID) {
-        const fileData = pendingUploads;
-        const customId = message.text;
-        pendingUploads = {};
+async function getEmbedding(text) {
+    const response = await axios.post(
+        HC_EMBEDDINGS_URL,
+        {
+            input: text,
+            model: 'openai/text-embedding-3-small'
+        },
+        {
+            headers: {
+                'Authorization': `Bearer ${HC_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        }
+    );
+    return response.data.data[0].embedding;
+}
 
-        const localFilePath = path.join(__dirname, 'cache', fileData.id + path.extname(fileData.name));
-        const writer = fs.createWriteStream(localFilePath);
+async function addMemoryToAppwrite(content, category = 'general') {
+    const docId = appwrite.ID.unique();
+    const now = new Date().toISOString();
+    
+    await databases.createDocument(
+        APPWRITE_DATABASE_ID,
+        APPWRITE_MEMORY_COLLECTION_ID,
+        docId,
+        {
+            content: content,
+            category: category,
+            createdAt: now,
+            synced: false
+        }
+    );
+    
+    return docId;
+}
+
+async function syncMemoriesToVector() {
+    try {
+        const unsyncedDocs = await databases.listDocuments(
+            APPWRITE_DATABASE_ID,
+            APPWRITE_MEMORY_COLLECTION_ID,
+            [appwrite.Query.equal('synced', false)]
+        );
+
+        if (unsyncedDocs.documents.length === 0) {
+            console.log('No unsynced memories found');
+        } else {
+            console.log(`Found ${unsyncedDocs.documents.length} unsynced memories`);
+
+            for (const doc of unsyncedDocs.documents) {
+                const embedding = await getEmbedding(doc.content);
+                await vectorIndex.upsert({
+                    id: doc.$id,
+                    vector: embedding,
+                    metadata: {
+                        content: doc.content,
+                        category: doc.category || 'general',
+                        createdAt: doc.createdAt
+                    }
+                });
+
+                await databases.updateDocument(
+                    APPWRITE_DATABASE_ID,
+                    APPWRITE_MEMORY_COLLECTION_ID,
+                    doc.$id,
+                    { synced: true }
+                );
+            }
+        }
+
+        await syncDeletions();
+
+        lastSyncTime = new Date();
+        console.log(`Sync completed at ${lastSyncTime.toISOString()}`);
+    } catch (error) {
+        console.error('[Sync] Error:', error);
+    }
+}
+
+async function syncDeletions() {
+    try {
+        const allAppwriteDocs = await databases.listDocuments(
+            APPWRITE_DATABASE_ID,
+            APPWRITE_MEMORY_COLLECTION_ID,
+            [appwrite.Query.limit(1000)]
+        );
+        const appwriteIds = new Set(allAppwriteDocs.documents.map(d => d.$id));
+
+        const vectorResults = await vectorIndex.range({ cursor: 0, limit: 1000, includeMetadata: false });
+        const vectorIds = vectorResults.vectors.map(v => v.id);
+
+        const toDelete = vectorIds.filter(id => !appwriteIds.has(id));
         
-        try {
+        if (toDelete.length > 0) {
+            await vectorIndex.delete(toDelete);
+            console.log(`[Deleted: ${toDelete.join(', ')}`);
+        } else {
+            console.log(' No orphaned vectors found');
+        }
+    } catch (error) {
+        console.error('[Sync] Error checking deletions:', error);
+    }
+}
+
+async function queryMemories(query, topK = 5) {
+    try {
+        const queryEmbedding = await getEmbedding(query);
+        
+        const results = await vectorIndex.query({
+            vector: queryEmbedding,
+            topK: topK,
+            includeMetadata: true
+        });
+
+        const memories = results.map(r => ({
+            content: r.metadata?.content,
+            category: r.metadata?.category,
+            score: r.score
+        })).filter(r => r.content);
+        
+        console.log(`Found ${memories.length} relevant memories`);
+        memories.forEach((m, i) => console.log(`  ${i+1}. [${m.category}] score=${m.score.toFixed(3)} "${m.content?.substring(0, 40)}..."`));
+        
+        return memories;
+    } catch (error) {
+        console.error('[Query] Error:', error);
+        return [];
+    }
+}
+
+async function executeToolCall(toolName, toolInput) {
+    console.log(`Executing tool: ${toolName}`);
+    console.log(`Tool input:`, JSON.stringify(toolInput, null, 2));
+    
+    switch (toolName) {
+        case 'add_memory': {
+            const docId = await addMemoryToAppwrite(toolInput.content, toolInput.category);
+            console.log(`add_memory completed: ${docId}`);
+            return { success: true, message: `Memory saved with ID ${docId}. Will be synced to vector DB shortly.` };
+        }
+        
+        case 'yap': {
+            console.log(`Posting yap to channel ${CHANNEL_ID}`);
+            await app.client.chat.postMessage({
+                channel: CHANNEL_ID,
+                text: `<!subteam^S09LUMPUBU0|cultists> *New yap! Go read it :tw_knife:*\n\n${toolInput.message}`
+            });
+            
+            await app.client.chat.postMessage({
+                channel: CHANNEL_ID,
+                text: "Pls thread here! :thread: :D",
+                blocks: [
+                    {
+                        type: "section",
+                        text: { type: "mrkdwn", text: "Pls thread here! :thread: :D" }
+                    },
+                    {
+                        type: "actions",
+                        elements: [{
+                            type: "button",
+                            text: { type: "plain_text", text: "Suggest a new yap", emoji: false },
+                            action_id: "reply_button_click",
+                            value: toolInput.message
+                        }]
+                    }
+                ]
+            });
+            console.log('Yap posted successfully');
+            return { success: true, message: "Yap posted successfully!" };
+        }
+        
+        case 'cdn_upload': {
+            console.log(`CDN upload: ${toolInput.file_id}`);
+            const localFilePath = path.join(__dirname, 'cache', toolInput.file_id + path.extname(toolInput.original_name));
+            const writer = fs.createWriteStream(localFilePath);
+            
+            console.log(`Downloading from Slack...`);
             const response = await axios({
-                url: fileData.url,
+                url: toolInput.slack_file_url,
                 method: 'GET',
                 responseType: 'stream',
-                headers: {
-                    'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}`
-                }
+                headers: { 'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}` }
             });
             response.data.pipe(writer);
             
@@ -57,154 +312,223 @@ app.message(async ({ message, say }) => {
                 writer.on('error', reject);
             });
 
-            const inputFile = InputFile.fromPath(localFilePath, fileData.name);
-            const appwriteFile = await storage.createFile(APPWRITE_BUCKET_ID, customId, inputFile, [appwrite.Permission.read(appwrite.Role.any())]);
-            
-            const shareFileUrl = `https://cdn.isitzoe.dev/${appwriteFile.$id}`;
-            
-            await say(`Hey <@${message.user}>, your file is now on CDN! You can access it here: ${shareFileUrl} :3`);
+            console.log(`Uploading to Appwrite...`);
+            const inputFile = InputFile.fromPath(localFilePath, toolInput.original_name);
+            const appwriteFile = await storage.createFile(
+                APPWRITE_BUCKET_ID, 
+                toolInput.file_id, 
+                inputFile, 
+                [appwrite.Permission.read(appwrite.Role.any())]
+            );
             
             fs.unlinkSync(localFilePath);
-
-        } catch (error) {
-            console.error('Error downloading file:', error);
-            await say(`I was trying to get your file on CDN, but something broke :heavysob: maybe the ID is taken? Can you pwease re-upload it? :3`);
-            if (fs.existsSync(localFilePath)) {
-                fs.unlinkSync(localFilePath);
-            }
+            
+            const shareFileUrl = `https://cdn.isitzoe.dev/${appwriteFile.$id}`;
+            console.log(`CDN upload complete: ${shareFileUrl}`);
+            return { success: true, message: `File uploaded! URL: ${shareFileUrl}` };
         }
-        return;
-    }
-
-    if (message.text && message.text.startsWith("rename file ") && message.channel_type === 'im' && message.user === USER_ID) {
-        const parts = message.text.replace("rename file ", "").trim().split(" ");
-
-        const [originalId, newId] = parts;
         
-        await say(`Alrighty! :D Renaming ${originalId} to ${newId}...`);
-
-        try {
-            const file = await storage.getFile(APPWRITE_BUCKET_ID, originalId);
-            const fileBuffer = await storage.getFileDownload(APPWRITE_BUCKET_ID, originalId);
+        case 'cdn_rename': {
+            console.log(`CDN rename: ${toolInput.original_id} -> ${toolInput.new_id}`);
+            const file = await storage.getFile(APPWRITE_BUCKET_ID, toolInput.original_id);
+            const fileBuffer = await storage.getFileDownload(APPWRITE_BUCKET_ID, toolInput.original_id);
             
             const inputFile = InputFile.fromBuffer(Buffer.from(fileBuffer), file.name);
-            await storage.createFile(APPWRITE_BUCKET_ID, newId, inputFile, [appwrite.Permission.read(appwrite.Role.any())]);
+            await storage.createFile(
+                APPWRITE_BUCKET_ID, 
+                toolInput.new_id, 
+                inputFile, 
+                [appwrite.Permission.read(appwrite.Role.any())]
+            );
             
-            await storage.deleteFile(APPWRITE_BUCKET_ID, originalId);
+            await storage.deleteFile(APPWRITE_BUCKET_ID, toolInput.original_id);
             
-            const shareFileUrl = `https://cdn.isitzoe.dev/${newId}`;
-            await say(`Done! File renamed to ${newId}. Check it out! ${shareFileUrl} :yay:`);
-
-        } catch (error) {
-            console.error('Error renaming file:', error);
-            await say(`Oh noe there was an error :(( :heavysob: ${error.message}`);
+            const shareFileUrl = `https://cdn.isitzoe.dev/${toolInput.new_id}`;
+            console.log(`CDN rename complete: ${shareFileUrl}`);
+            return { success: true, message: `File renamed! New URL: ${shareFileUrl}` };
         }
-        return;
+        
+        case 'cdn_delete': {
+            console.log(`CDN delete: ${toolInput.file_id}`);
+            await storage.deleteFile(APPWRITE_BUCKET_ID, toolInput.file_id);
+            console.log(`CDN delete complete`);
+            return { success: true, message: `File ${toolInput.file_id} deleted.` };
+        }
+        
+        default:
+            console.log(`Unknown tool: ${toolName}`);
+            return { success: false, message: `Unknown tool: ${toolName}` };
+    }
+}
+
+async function getSlackHistory(channelId, limit = 20) {
+    console.log(`Fetching last ${limit} messages from Slack channel ${channelId}`);
+    try {
+        const result = await app.client.conversations.history({
+            channel: channelId,
+            limit: limit
+        });
+        
+        const messages = result.messages
+            .reverse()
+            .map(msg => ({
+                role: msg.bot_id ? "assistant" : "user",
+                content: msg.text || "",
+                timestamp: msg.ts
+            }))
+            .filter(msg => msg.content);
+        
+        console.log(`Retrieved ${messages.length} messages`);
+        return messages;
+    } catch (error) {
+        console.error('Error fetching Slack history:', error);
+        return [];
+    }
+}
+
+async function storeConversationHistory(userMessage, assistantResponse) {
+    const timestamp = new Date().toISOString();
+    const historyEntry = `[${timestamp}] User: ${userMessage}\n[${timestamp}] Assistant: ${assistantResponse}`;
+    
+    await addMemoryToAppwrite(historyEntry, 'history');
+}
+
+async function chat(userMessage, fileInfo = null, channelId = null) {
+    console.log(`Chat file attached: ${fileInfo ? fileInfo.name : 'none'}`);
+    
+    const memories = await queryMemories(userMessage, 5);
+    const historicalContext = await queryMemories(userMessage, 10);
+    
+    let memoryContext = "";
+    const nonHistoryMemories = memories.filter(m => m.category !== 'history');
+    if (nonHistoryMemories.length > 0) {
+        memoryContext = "\n\nRelevant memories:\n" + 
+            nonHistoryMemories.map(m => `- [${m.category}] ${m.content}`).join("\n");
+    }
+    
+    let olderHistoryContext = "";
+    const historyMemories = historicalContext.filter(m => m.category === 'history');
+    if (historyMemories.length > 0) {
+        olderHistoryContext = "\n\nRelevant older conversations:\n" + 
+            historyMemories.map(m => m.content).join("\n\n");
     }
 
-    if (message.text && message.text.startsWith("delete file ") && message.channel_type === 'im' && message.user === USER_ID) {
-        const fileId = message.text.replace("delete file ", "").trim();
-        await say(`Taking care of it, boss.`);
-        try {
-            await storage.deleteFile(APPWRITE_BUCKET_ID, fileId);
-            await say(`📲 ${fileId} has been terminated, boss. My job here is done. :3`);
-        } catch (error) {
-            console.error('Error deleting file:', error);
-            await say(`Failed to delete file ${fileId} :heavysob: ${error.message}`);
-        }
-        return;
+    const systemPrompt = `You are Zoe's personal AI assistant bot on Slack. You're friendly, helpful, and have a cute personality (use :3 and similar emoticons sometimes).
+
+You have access to long-term memory - information Zoe has shared with you in past conversations. Use this context to provide personalized responses.
+
+You can:
+1. Remember things for Zoe (use add_memory tool for important info)
+2. Post yaps (messages) to Zoe's channel for her followers
+3. Manage CDN files (upload, rename, delete)
+
+When Zoe shares something important about herself, her preferences, projects, or anything you should remember, use the add_memory tool to save it.
+
+When Zoe wants to yap/share something with her followers, use the yap tool.
+${memoryContext}${olderHistoryContext}`;
+
+    let userContent = userMessage;
+    if (fileInfo) {
+        userContent += `\n\n[User attached a file: "${fileInfo.name}" - URL: ${fileInfo.url}]`;
     }
 
-    if (message.text == "cdn") {
+    const messages = [{ role: "system", content: systemPrompt }];
+    
+    if (channelId) {
+        const recentHistory = await getSlackHistory(channelId, 20);
+        for (const msg of recentHistory.slice(0, -1)) {
+            messages.push({ role: msg.role, content: msg.content });
+        }
+    }
+    
+    messages.push({ role: "user", content: userContent });
+    
+    let response = await axios.post(HC_CHAT_URL, {
+        model: "google/gemini-2.5-flash-preview",
+        messages: messages,
+        tools: AI_TOOLS,
+        max_tokens: 1024
+    }, {
+        headers: {
+            'Authorization': `Bearer ${HC_API_KEY}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    let assistantMessage = response.data.choices[0].message;
+
+    while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        console.log(`Processing ${assistantMessage.tool_calls.length} tool call(s)`);
+        messages.push(assistantMessage);
+
+        for (const toolCall of assistantMessage.tool_calls) {
+            let toolResult;
+            try {
+                const args = JSON.parse(toolCall.function.arguments);
+                toolResult = await executeToolCall(toolCall.function.name, args);
+            } catch (error) {
+                toolResult = { success: false, message: `Error: ${error.message}` };
+            }
+
+            messages.push({
+                role: "tool",
+                tool_call_id: toolCall.id,
+                content: JSON.stringify(toolResult)
+            });
+        }
+
+        response = await axios.post(HC_CHAT_URL, {
+            model: "google/gemini-2.5-flash-preview",
+            messages: messages,
+            tools: AI_TOOLS,
+            max_tokens: 1024
+        }, {
+            headers: {
+                'Authorization': `Bearer ${HC_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        assistantMessage = response.data.choices[0].message;
+    }
+
+    return assistantMessage.content || "I processed your request! :3";
+}
+
+app.message(async ({ message, say }) => {
+    if (message.channel_type === 'im' && message.user === USER_ID) {
+        if (!message.text && !message.files) {
+            return;
+        }
+
+        let fileInfo = null;
         if (message.files && message.files.length > 0) {
             const file = message.files[0];
-            if (file.url_private_download) {
-                pendingUploads = {
-                    url: file.url_private_download,
-                    id: file.id,
-                    name: file.name
-                };
-                await say(`Hiiii cutie :DDD What ID should I use for this file?`);
-            } else {
-                await say(`I was trying to fetch the file for CDN, but it seems broken :heavysob:, can you pwease re-upload it? :3`);
-            }
-        } else {
-            await say(`I saw you said CDN but there was no file :heavysob:. Can you pwease upload the file you want to share? :3`);
+            console.log(`[Slack] File attached: ${file.name}`);
+            fileInfo = {
+                name: file.name,
+                url: file.url_private_download,
+                id: file.id
+            };
         }
 
-    } else if (message.channel_type === 'im' && message.user === USER_ID) {
-        await say({
-            text: message.text,
-            blocks: [
-                {
-                    type: "section",
-                    text: {
-                        type: "mrkdwn",
-                        text: "*Do you want to yap this?*\n\n" + message.text
-                    }
-                },
-                {
-                    type: "actions",
-                    elements: [
-                        {
-                            type: "button",
-                            text: {
-                                type: "plain_text",
-                                text: "Yeah, looks :fire:",
-                                emoji: true
-                            },
-                            value: message.text,
-                            action_id: "fire_button_click"
-                        }
-                    ]
-                }
-            ]
-        });
-    }
-});
-
-app.action('fire_button_click', async ({ body, ack, client }) => {
-    await ack();
-
-    const originalMessage = body.actions[0].value;
-
-    try {
-        await client.chat.postMessage({
-            channel: CHANNEL_ID,
-            text: `<!subteam^S09LUMPUBU0|cultists> *New yap! Go read it :tw_knife:*\n\n${originalMessage}`
-        });
-
-        await client.chat.postMessage({
-            channel: CHANNEL_ID,
-            text: "Pls thread here! :thread: :D",
-            blocks: [
-                {
-                    type: "section",
-                    text: {
-                        type: "mrkdwn",
-                        text: "Pls thread here! :thread: :D"
-                    }
-                },
-                {
-                    type: "actions",
-                    elements: [
-                        {
-                            type: "button",
-                            text: {
-                                type: "plain_text",
-                                text: "Suggest a new yap",
-                                emoji: false,
-                            },
-                            action_id: "reply_button_click",
-                            value: originalMessage
-                        }
-                    ]
-                }
-            ]
-        });
-
-    } catch (error) {
-        console.error(error);
+        const userText = message.text || "";
+        let response;
+        
+        try {
+            response = await chat(userText, fileInfo, message.channel);
+            await say(response);
+        } catch (error) {
+            console.error('AI Error:', error);
+            response = `[ERROR] ${error.message}`;
+            await say(`Something went wrong :heavysob: ${error.message}`);
+        }
+        
+        try {
+            await storeConversationHistory(userText, response);
+        } catch (historyError) {
+            console.error('Failed to store history:', historyError);
+        }
     }
 });
 
@@ -447,7 +771,13 @@ cron.schedule('0 20 * * *', async () => {
     }
 });
 
+cron.schedule('*/2 * * * *', async () => {
+    await syncMemoriesToVector();
+});
+
 (async () => {
     await app.start(process.env.PORT || 3000);
     console.log('Running :3');
+    
+    await syncMemoriesToVector();
 })();
