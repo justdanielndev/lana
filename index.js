@@ -686,7 +686,7 @@ You can:
 2. Send messages (send_message tool, goes to thread, use send_to_channel=true to broadcast to main chat view too)
 3. React to messages (react tool)
 4. Search message history (search_messages tool)
-5. Post yaps (messages) to Zoe's yapping channel
+5. Post yaps (messages) to Zoe's yapping channel (Zoe needs to provide the exact message to yap, or you can send her the exact text you're planning to yap, for her to approve first)
 6. Manage CDN files (upload, rename, delete)
 
 About tools:
@@ -713,6 +713,11 @@ You're in the Hack Club Slack workspace, and as such you can use workspace emoji
 - :60fps-parrot: (animated dancing parrot)
 - :leeks: (leeks the vegetable as a reference to leaks)
 
+Don't abuse emojis, but feel free to use them to express emotion and make your messages more fun.
+
+The current date and time is ${new Date().toLocaleString()}.
+
+Here are some relevant memories and past conversations to help you respond appropriately (you can take into account their timestamp too to know when they happened and order them):
 ${memoryContext}${olderHistoryContext}`;
 
     let userContent = userMessage;
@@ -726,7 +731,7 @@ ${memoryContext}${olderHistoryContext}`;
     if (channelId) {
         slackHistory = await getSlackHistory(channelId, 20, threadTs);
         for (const msg of slackHistory) {
-            messages.push({ role: msg.role, content: msg.content });
+            messages.push({ role: msg.role, content: msg.content, timestamp: msg.timestamp });
         }
     }
     
