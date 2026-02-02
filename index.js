@@ -327,35 +327,42 @@ async function executeImmediateTool(toolName, toolInput, context) {
     try {
         switch (toolName) {
             case 'send_message': {
-                if (!context.threadTs) {
-                    return { success: false, message: "Can only send messages in threads" };
+                try {
+                    const threadTs = context.threadTs || context.messageTs;
+                    const broadcast = toolInput.send_to_channel || false;
+                    let postConfig = {
+                        channel: context.userId,
+                        text: toolInput.message,
+                        thread_ts: threadTs
+                    };
+                    
+                    if (broadcast) {
+                        postConfig.reply_broadcast = true;
+                    }
+                    
+                    const result = await app.client.chat.postMessage(postConfig);
+                    return { success: true, message: "Message sent successfully!" };
+                } catch (error) {
+                    console.error('Failed to send message:', error);
+                    return { success: false, message: `Failed to send message: ${error.message}` };
                 }
-                
-                const broadcast = toolInput.send_to_channel || false;
-                let postConfig = {
-                    channel: context.userId,
-                    text: toolInput.message,
-                    thread_ts: context.threadTs
-                };
-                
-                if (broadcast) {
-                    postConfig.reply_broadcast = true;
-                }
-                
-                await app.client.chat.postMessage(postConfig);
-                return { success: true, message: "Message sent!" };
             }
             
             case 'react': {
                 const targetTs = toolInput.message_ts || context.messageTs;
                 if (!targetTs) return { success: false, message: "No message to react to" };
                 
-                await app.client.reactions.add({
-                    channel: context.channelId,
-                    name: toolInput.emoji,
-                    timestamp: targetTs
-                });
-                return { success: true, message: `Reacted with :${toolInput.emoji}:` };
+                try {
+                    await app.client.reactions.add({
+                        channel: context.channelId,
+                        name: toolInput.emoji,
+                        timestamp: targetTs
+                    });
+                    return { success: true, message: `Reacted with :${toolInput.emoji}:` };
+                } catch (error) {
+                    console.error('Failed to add reaction:', error);
+                    return { success: false, message: `Failed to react: ${error.message}` };
+                }
             }
             
             case 'search_messages': {
@@ -508,7 +515,7 @@ async function processToolQueue() {
         try {
             const result = await executeToolCall(toolName, toolInput);
 
-            const silentTools = ['add_memory'];
+            const silentTools = ['add_memory', 'send_message', 'react'];
             if (!silentTools.includes(toolName)) {
                 const aiResponse = await processToolResultThroughAI(toolName, result);
                 
@@ -521,12 +528,12 @@ async function processToolQueue() {
             
             resolve({ status: "completed", result });
         } catch (error) {
-            console.error(`Error processing ${toolName}:`, error);
-            
-            const silentTools = ['add_memory'];
-            if (!silentTools.includes(toolName)) {
-                const errorResponse = `Uh oh, something went wrong with ${toolName}: ${error.message} :heavysob:`;
-                await app.client.chat.postMessage({
+             console.error(`Error processing ${toolName}:`, error);
+             
+             const silentTools = ['add_memory'];
+             if (!silentTools.includes(toolName)) {
+                 const errorResponse = `Uh oh, something went wrong with ${toolName}: ${error.message} :heavysob:`;
+                 await app.client.chat.postMessage({
                     channel: userId,
                     text: errorResponse,
                     thread_ts: job.threadTs
@@ -663,30 +670,23 @@ async function storeConversationHistory(userMessage, assistantResponse) {
 }
 
 async function chat(userMessage, fileInfo = null, channelId = null, userId = null, messageTs = null, threadTs = null) {    
-    const memories = await queryMemories(userMessage, 5);
-    const historicalContext = await queryMemories(userMessage, 10);
-    
-    let memoryContext = "";
-    const nonHistoryMemories = memories.filter(m => m.category !== 'history');
-    if (nonHistoryMemories.length > 0) {
-        memoryContext = "\n\nRelevant memories:\n" + 
-            nonHistoryMemories.map(m => `- [${m.category}] ${m.content}`).join("\n");
-    }
-    
-    let olderHistoryContext = "";
-    const historyMemories = historicalContext.filter(m => m.category === 'history');
-    if (historyMemories.length > 0) {
-        olderHistoryContext = "\n\nRelevant older conversations:\n" + 
-            historyMemories.map(m => m.content).join("\n\n");
-    }
+     const memories = await queryMemories(userMessage, 5);
+     let memoryContext = "";
+     const nonHistoryMemories = memories.filter(m => m.category !== 'history');
+     if (nonHistoryMemories.length > 0) {
+         memoryContext = "\n\nRelevant memories:\n" + 
+             nonHistoryMemories.map(m => `- [${m.category}] ${m.content}`).join("\n");
+     }
 
-    const systemPrompt = `You are Zoe's personal AI assistant bot on Slack. You're friendly, helpful, and have a cute personality (use :3 and similar emoticons sometimes).
+     const systemPrompt = `You are Zoe's personal AI assistant bot on Slack. You're friendly, helpful, and have a cute personality (use :3 and similar emoticons sometimes).
 
-    You have access to long-term memory - information Zoe has shared with you in past conversations. Use this context to provide personalized responses.
+IMPORTANT: To reply to Zoe, you MUST use the send_message tool. Any text you output outside of send_message will be ignored. Always use send_message for your responses.
+
+You have access to long-term memory - information Zoe has shared with you in past conversations. Use this context to provide personalized responses.
 
 You can:
 1. Remember things for Zoe (use add_memory tool for important info)
-2. Send messages (send_message tool, goes to thread, use send_to_channel=true to broadcast to main chat view too)
+2. Send messages (send_message tool - THIS IS HOW YOU REPLY, goes to thread, use send_to_channel=true to broadcast to main chat view too)
 3. React to messages (react tool)
 4. Search message history (search_messages tool)
 5. Post yaps (messages) to Zoe's yapping channel (Zoe needs to provide the exact message to yap, or you can send her the exact text you're planning to yap, for her to approve first)
@@ -718,10 +718,7 @@ You're in the Hack Club Slack workspace, and as such you can use workspace emoji
 
 Don't abuse emojis, but feel free to use them to express emotion and make your messages more fun.
 
-The current date and time is ${new Date().toLocaleString()}.
-
-Here are some relevant memories and past conversations to help you respond appropriately (you can take into account their timestamp too to know when they happened and order them):
-${memoryContext}${olderHistoryContext}`;
+The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
 
     let userContent = userMessage;
     if (fileInfo) {
@@ -761,6 +758,7 @@ ${memoryContext}${olderHistoryContext}`;
     });
 
     let assistantMessage = response.data.choices[0].message;
+    let usedSendMessage = false;
 
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         messages.push(assistantMessage);
@@ -772,6 +770,10 @@ ${memoryContext}${olderHistoryContext}`;
             try {
                 const args = JSON.parse(toolCall.function.arguments);
                 let toolResult;
+                
+                if (toolCall.function.name === 'send_message') {
+                    usedSendMessage = true;
+                }
                 
                 if (immediateTools.includes(toolCall.function.name)) {
                      toolResult = await executeImmediateTool(toolCall.function.name, args, currentMessageContext);
@@ -812,6 +814,10 @@ ${memoryContext}${olderHistoryContext}`;
         assistantMessage = response.data.choices[0].message;
     }
 
+    if (usedSendMessage) {
+        return null;
+    }
+    
     return assistantMessage.content || "Huh... No response was generated.";
 }
 
@@ -849,16 +855,20 @@ app.message(async ({ message, say }) => {
                 message.thread_ts
             );
             
-            if (message.thread_ts) {
-                await say({
-                    text: response,
-                    thread_ts: message.thread_ts
-                });
+            if (response) {
+                if (message.thread_ts) {
+                    await say({
+                        text: response,
+                        thread_ts: message.thread_ts
+                    });
+                } else {
+                    await say({
+                        text: response,
+                        thread_ts: message.ts
+                    });
+                }
             } else {
-                await say({
-                    text: response,
-                    thread_ts: message.ts
-                });
+                console.log('No response received');
             }
         } catch (error) {
             console.error('AI Error:', error);
