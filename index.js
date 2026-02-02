@@ -583,12 +583,14 @@ async function getSlackHistory(channelId, limit = 20, threadTs = null) {
             });
 
             const threadMessages = threadResult.messages.slice(1, 11);
-            messages = threadMessages.map(msg => ({
-                role: msg.bot_id ? "assistant" : "user",
-                content: msg.text || "",
-                timestamp: msg.ts,
-                type: "thread_reply"
-            }));
+            messages = threadMessages
+                .filter(msg => !msg.bot_id)
+                .map(msg => ({
+                    role: "user",
+                    content: msg.text || "",
+                    timestamp: msg.ts,
+                    type: "thread_reply"
+                }));
 
             return messages.filter(msg => msg.content);
         }
@@ -612,8 +614,10 @@ async function getSlackHistory(channelId, limit = 20, threadTs = null) {
         for (const msg of allMessages.reverse()) {
             if (messages.length >= limit) break;
 
+            if (msg.bot_id) continue;
+
             messages.push({
-                role: msg.bot_id ? "assistant" : "user",
+                role: "user",
                 content: msg.text || "",
                 timestamp: msg.ts,
                 type: "main"
@@ -629,8 +633,10 @@ async function getSlackHistory(channelId, limit = 20, threadTs = null) {
 
                     const threadReplies = threadResult.messages.slice(1, 11);
                     for (const reply of threadReplies) {
+                        if (reply.bot_id) continue;
+                        
                         messages.push({
-                            role: reply.bot_id ? "assistant" : "user",
+                            role: "user",
                             content: reply.text || "",
                             timestamp: reply.ts,
                             type: "thread_reply",
