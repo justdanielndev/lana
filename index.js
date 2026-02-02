@@ -236,7 +236,6 @@ async function queryMemories(query, topK = 5) {
             score: r.score
         })).filter(r => r.content);
         
-        console.log(`Found ${memories.length} relevant memories`);
         memories.forEach((m, i) => console.log(`  ${i+1}. [${m.category}] score=${m.score.toFixed(3)} "${m.content?.substring(0, 40)}..."`));
         
         return memories;
@@ -377,9 +376,7 @@ async function storeConversationHistory(userMessage, assistantResponse) {
     await addMemoryToAppwrite(historyEntry, 'history');
 }
 
-async function chat(userMessage, fileInfo = null, channelId = null) {
-    console.log(`Chat file attached: ${fileInfo ? fileInfo.name : 'none'}`);
-    
+async function chat(userMessage, fileInfo = null, channelId = null) {    
     const memories = await queryMemories(userMessage, 5);
     const historicalContext = await queryMemories(userMessage, 10);
     
@@ -409,6 +406,23 @@ You can:
 When Zoe shares something important about herself, her preferences, projects, or anything you should remember, use the add_memory tool to save it.
 
 When Zoe wants to yap/share something with her followers, use the yap tool.
+
+You're in the Hack Club Slack workspace, and as such you can use workspace emojis. There are thousands, though, so you can't know them all. Here are some (which you can use instead of standard emojis):
+- :real: (text showing "real")
+- :heavysob: (crying face)
+- :yesyes: (animated cat nodding)
+- :no-no: (animated cat shaking head)
+- :yay: (animated fox excited)
+- :skulk: (squished skull)
+- :upvote:
+- :downvote:
+- :this: (text showing "this" with an arrow pointing up)
+- :eyes_shaking: (animated eyes shaking)
+- :loll: (animated minion laughing)
+- :same: (text showing "same")
+- :60fps-parrot: (animated dancing parrot)
+- :leeks: (leeks the vegetable as a reference to leaks)
+
 ${memoryContext}${olderHistoryContext}`;
 
     let userContent = userMessage;
