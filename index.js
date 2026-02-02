@@ -481,19 +481,20 @@ async function executeToolCall(toolName, toolInput) {
     }
 }
 
-async function queueToolExecution(toolName, toolInput, userId, channelId) {
-    return new Promise((resolve) => {
-        toolQueue.push({
-            toolName,
-            toolInput,
-            userId,
-            channelId,
-            resolve,
-            timestamp: Date.now()
-        });
-        processToolQueue();
-    });
-}
+async function queueToolExecution(toolName, toolInput, userId, channelId, threadTs = null) {
+     return new Promise((resolve) => {
+         toolQueue.push({
+             toolName,
+             toolInput,
+             userId,
+             channelId,
+             threadTs,
+             resolve,
+             timestamp: Date.now()
+         });
+         processToolQueue();
+     });
+ }
 
 async function processToolQueue() {
     if (isProcessingQueue || toolQueue.length === 0) return;
@@ -513,7 +514,8 @@ async function processToolQueue() {
                 
                 await app.client.chat.postMessage({
                     channel: userId,
-                    text: aiResponse
+                    text: aiResponse,
+                    thread_ts: job.threadTs
                 });
             }
             
@@ -526,7 +528,8 @@ async function processToolQueue() {
                 const errorResponse = `Uh oh, something went wrong with ${toolName}: ${error.message} :heavysob:`;
                 await app.client.chat.postMessage({
                     channel: userId,
-                    text: errorResponse
+                    text: errorResponse,
+                    thread_ts: job.threadTs
                 });
             }
             
@@ -679,7 +682,7 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
 
     const systemPrompt = `You are Zoe's personal AI assistant bot on Slack. You're friendly, helpful, and have a cute personality (use :3 and similar emoticons sometimes).
 
-You have access to long-term memory - information Zoe has shared with you in past conversations. Use this context to provide personalized responses.
+    You have access to long-term memory - information Zoe has shared with you in past conversations. Use this context to provide personalized responses.
 
 You can:
 1. Remember things for Zoe (use add_memory tool for important info)
@@ -771,10 +774,10 @@ ${memoryContext}${olderHistoryContext}`;
                 let toolResult;
                 
                 if (immediateTools.includes(toolCall.function.name)) {
-                    toolResult = await executeImmediateTool(toolCall.function.name, args, currentMessageContext);
-                } else if (queuedTools.includes(toolCall.function.name)) {
-                    queueToolExecution(toolCall.function.name, args, userId, channelId);
-                    toolResult = { queued: true, message: `${toolCall.function.name} queued` };
+                     toolResult = await executeImmediateTool(toolCall.function.name, args, currentMessageContext);
+                 } else if (queuedTools.includes(toolCall.function.name)) {
+                     queueToolExecution(toolCall.function.name, args, userId, channelId, threadTs);
+                     toolResult = { queued: true, message: `${toolCall.function.name} queued` };
                 } else {
                     toolResult = { success: false, message: `Unknown tool: ${toolCall.function.name}` };
                 }
