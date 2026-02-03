@@ -571,85 +571,27 @@ You're in Slack, so you need to use its markdown if you need to use formatting. 
 
 async function getSlackHistory(channelId, limit = 20, threadTs = null) {
     try {
-        let messages = [];
-        let collectedItems = 0;
-        let cursor = null;
-
-        if (threadTs) {
-            const threadResult = await app.client.conversations.replies({
-                channel: channelId,
-                ts: threadTs,
-                limit: 200
-            });
-
-            const threadMessages = threadResult.messages.slice(1, 11);
-            messages = threadMessages
-                .filter(msg => !msg.bot_id)
-                .map(msg => ({
-                    role: "user",
-                    content: msg.text || "",
-                    timestamp: msg.ts,
-                    type: "thread_reply"
-                }));
-
-            return messages.filter(msg => msg.content);
+        if (!threadTs) {
+            return [];
         }
 
-        let allMessages = [];
-        let hasMore = true;
+        const threadResult = await app.client.conversations.replies({
+            channel: channelId,
+            ts: threadTs,
+            limit: 200
+        });
 
-        while (hasMore && collectedItems < limit * 3) {
-            const result = await app.client.conversations.history({
-                channel: channelId,
-                limit: 50,
-                cursor: cursor
-            });
-
-            allMessages = allMessages.concat(result.messages || []);
-            cursor = result.response_metadata?.next_cursor;
-            hasMore = !!cursor && cursor !== '';
-            collectedItems += result.messages?.length || 0;
-        }
-
-        for (const msg of allMessages.reverse()) {
-            if (messages.length >= limit) break;
-
-            if (msg.bot_id) continue;
-
-            messages.push({
+        const threadMessages = threadResult.messages.slice(-10);
+        const messages = threadMessages
+            .filter(msg => !msg.bot_id)
+            .map(msg => ({
                 role: "user",
                 content: msg.text || "",
                 timestamp: msg.ts,
-                type: "main"
-            });
+                type: "thread_reply"
+            }));
 
-            if (msg.thread_ts === msg.ts && msg.reply_count > 0) {
-                try {
-                    const threadResult = await app.client.conversations.replies({
-                        channel: channelId,
-                        ts: msg.ts,
-                        limit: 200
-                    });
-
-                    const threadReplies = threadResult.messages.slice(1, 11);
-                    for (const reply of threadReplies) {
-                        if (reply.bot_id) continue;
-                        
-                        messages.push({
-                            role: "user",
-                            content: reply.text || "",
-                            timestamp: reply.ts,
-                            type: "thread_reply",
-                            parent_ts: msg.ts
-                        });
-                    }
-                } catch (e) {
-                    console.log('Could not fetch thread:', e.message);
-                }
-            }
-        }
-
-        return messages.filter(msg => msg.content).slice(0, limit);
+        return messages.filter(msg => msg.content);
     } catch (error) {
         console.error('Error fetching Slack history:', error);
         return [];
