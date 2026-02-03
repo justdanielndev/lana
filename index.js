@@ -41,6 +41,8 @@ const vectorIndex = new Index({
 const HC_API_KEY = process.env.HC_API_KEY;
 const HC_CHAT_URL = 'https://ai.hackclub.com/proxy/v1/chat/completions';
 const HC_EMBEDDINGS_URL = 'https://ai.hackclub.com/proxy/v1/embeddings';
+const HACKATIME_API_KEY = process.env.HACKATIME_API_KEY;
+const HACKATIME_BASE_URL = 'https://hackatime.hackclub.com/api/v1';
 
 let pendingUploads = {};
 let lastSyncTime = null;
@@ -177,8 +179,45 @@ const AI_TOOLS = [
                 required: ["file_id"]
             }
         }
+    },
+    {
+        type: "function",
+        function: {
+            name: "get_coding_stats",
+            description: "Get your daily coding time stats from HackaTime for a specific date range. Returns project breakdown and daily average.",
+            parameters: {
+                type: "object",
+                properties: {
+                    start_date: { type: "string", description: "Start date in YYYY-MM-DD format (optional)" },
+                    end_date: { type: "string", description: "End date in YYYY-MM-DD format (optional)" }
+                },
+                required: []
+            }
+        }
     }
 ];
+
+async function getCodingStats(startDate = null, endDate = null) {
+    try {
+        let url = `${HACKATIME_BASE_URL}/users/my/stats?features=projects`;
+        
+        if (startDate) url += `&start_date=${startDate}`;
+        if (endDate) url += `&end_date=${endDate}`;
+        
+        console.log(`HackaTime URL: ${url}`);
+        
+        const response = await axios.get(url, {
+            headers: {
+                'Authorization': `Bearer ${HACKATIME_API_KEY}`
+            }
+        });
+                
+        return response.data.data;
+    } catch (error) {
+        console.error('Error fetching Hackatime stats:', error.response?.data || error.message);
+        throw new Error(`Failed to fetch coding stats: ${error.message}`);
+    }
+}
 
 async function getEmbedding(text) {
     const response = await axios.post(
@@ -382,6 +421,21 @@ async function executeImmediateTool(toolName, toolInput, context) {
                 ).join('\n');
                 
                 return { success: true, results: formatted };
+            }
+            
+            case 'get_coding_stats': {
+                const stats = await getCodingStats(toolInput.start_date, toolInput.end_date);
+                
+                const topProjects = stats.projects ? stats.projects.slice(0, 5).map(p => 
+                    `• ${p.name}: ${p.text} (${p.percent.toFixed(1)}%)`
+                ).join('\n') : 'No project data available';
+                
+                const message = `Coding Stats\n\n` +
+                    `Total: ${stats.human_readable_total}\n` +
+                    `Daily Avg: ${stats.human_readable_daily_average}\n\n` +
+                    `Top Projects:\n${topProjects}`;
+                
+                return { success: true, message };
             }
             
             default:
@@ -620,21 +674,15 @@ async function storeConversationHistory(userMessage, assistantResponse) {
 }
 
 async function chat(userMessage, fileInfo = null, channelId = null, userId = null, messageTs = null, threadTs = null) {    
-     const memories = await queryMemories(userMessage, 20);
+     const memories = await queryMemories(userMessage, 50);
      console.log('Retrieved memories:', memories);
      let memoryContext = "";
      
      const actualMemories = memories.filter(m => m.category !== 'history' && m.score > 0.5).slice(0, 10);
-     const historyMemories = memories.filter(m => m.category === 'history' && m.score > 0.65).slice(0, 10);
-     
+
      if (actualMemories.length > 0) {
          memoryContext += "\n\nRelevant memories:\n" + 
              actualMemories.map(m => `- [${m.category}] ${m.content}`).join("\n");
-     }
-     
-     if (historyMemories.length > 0) {
-         memoryContext += "\n\nRelevant history:\n" + 
-             historyMemories.map(m => m.content).join("\n---\n");
      }
      
      console.log('Memory context:', memoryContext);
@@ -652,10 +700,11 @@ You can:
 4. Search message history (search_messages tool)
 5. Post yaps (messages) to Zoe's yapping channel (Zoe needs to provide the exact message to yap, or you can send her the exact text you're planning to yap, for her to approve first)
 6. Manage CDN files (upload, rename, delete)
+7. Get daily coding stats from HackaTime (get_coding_stats tool - shows projects breakdown, total time, and daily average)
 
 About tools:
-- send_message, react, search_messages: Execute immediately
-- add_memory, yap, cdn_*: These are queued async operations - tell the user you're queuing them EXCEPT for add_memory which is silent and happens in the background when you find it useful to remember smth.
+- send_message, react, search_messages, get_coding_stats: Execute immediately
+- add_memory, yap, cdn_*: These are queued async operations - tell the user you're queuing them EXCEPT for add_memory which is silent and happens in the background when you find it useful to remember smth. You should NOT tell the user about add_memory usage unless they specifically ask you about it.
 
 When Zoe shares something important about herself, use add_memory to save it.
 
@@ -679,7 +728,9 @@ You're in the Hack Club Slack workspace, and as such you can use workspace emoji
 - :60fps-parrot: (animated dancing parrot)
 - :leeks: (leeks the vegetable as a reference to leaks)
 
-Don't abuse emojis, but feel free to use them to express emotion and make your messages more fun.
+Use slack formatting where appropriate (e.g., *bold*, _italic_, ~strikethrough~, \`code\`, \`\`\`code blocks\`\`\`, <links|with text>, etc).
+
+Don't abuse emojis, but feel free to use them to express emotion and make your messages more fun. If something fails with reacting, no need to notify the user.
 
 The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
 
@@ -692,10 +743,10 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
     
     let slackHistory = [];
     if (channelId && threadTs) {
-        slackHistory = await getSlackHistory(channelId, 20, threadTs);
+        slackHistory = await getSlackHistory(channelId, 5, threadTs);
         for (const msg of slackHistory) {
             if (msg.timestamp !== messageTs) {
-                messages.push({ role: msg.role, content: msg.content, timestamp: msg.timestamp });
+                messages.push({ role: msg.role, content: msg.content });
             }
         }
     }
@@ -710,17 +761,24 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
         history: slackHistory
     };
         
-    let response = await axios.post(HC_CHAT_URL, {
-        model: "google/gemini-3-flash-preview",
-        messages: messages,
-        tools: AI_TOOLS,
-        max_tokens: 2048
-    }, {
-        headers: {
-            'Authorization': `Bearer ${HC_API_KEY}`,
-            'Content-Type': 'application/json'
-        }
-    });
+    let response;
+    try {
+        response = await axios.post(HC_CHAT_URL, {
+            model: "google/gemini-3-flash-preview",
+            messages: messages,
+            tools: AI_TOOLS,
+            max_tokens: 2048
+        }, {
+            headers: {
+                'Authorization': `Bearer ${HC_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+    } catch (error) {
+        console.error('AI API Error:', error.response?.data || error.message);
+        console.error('Request size:', JSON.stringify({model: "google/gemini-3-flash-preview", messages: messages, tools: AI_TOOLS, max_tokens: 2048}).length, 'bytes');
+        throw error;
+    }
 
     let assistantMessage = response.data.choices[0].message;
     let usedSendMessage = false;
@@ -728,7 +786,7 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         messages.push(assistantMessage);
         
-        const immediateTools = ['send_message', 'react', 'search_messages'];
+        const immediateTools = ['send_message', 'react', 'search_messages', 'get_coding_stats'];
         const queuedTools = ['add_memory', 'yap', 'cdn_upload', 'cdn_rename', 'cdn_delete'];
 
         for (const toolCall of assistantMessage.tool_calls) {
@@ -767,17 +825,23 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
             }
         }
 
-        response = await axios.post(HC_CHAT_URL, {
-            model: "google/gemini-3-flash-preview",
-            messages: messages,
-            tools: AI_TOOLS,
-            max_tokens: 2048
-        }, {
-            headers: {
-                'Authorization': `Bearer ${HC_API_KEY}`,
-                'Content-Type': 'application/json'
-            }
-        });
+        try {
+            response = await axios.post(HC_CHAT_URL, {
+                model: "google/gemini-3-flash-preview",
+                messages: messages,
+                tools: AI_TOOLS,
+                max_tokens: 2048
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${HC_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+        } catch (error) {
+            console.error('AI API Error:', error.response?.data || error.message);
+            console.error('Request size:', JSON.stringify({model: "google/gemini-3-flash-preview", messages: messages, tools: AI_TOOLS, max_tokens: 2048}).length, 'bytes');
+            throw error;
+        }
 
         assistantMessage = response.data.choices[0].message;
     }
