@@ -1157,20 +1157,55 @@ app.event('member_joined_channel', async ({ event, client }) => {
     }
 });
 
-cron.schedule('0 20 * * *', async () => {
+cron.schedule('*/2 * * * *', async () => {
+    await syncMemoriesToVector();
+});
+
+async function sendDailyRitualMessage() {
     try {
+        const greetings = [
+            "Hey bestie, how's the grind going?",
+            "What've you cooked today??",
+            "Tell me you've been productive 👀",
+            "Spill the tea on what you've built :0",
+            "What's the vibe on today's work?",
+        ];
+        
+        const closings = [
+            "Go share it on a yap pls :3",
+            "Drop a yap about it!! :D",
+            "Yap about your wins fr fr :3",
+            "Let the cultists know what's up :tw_knife:",
+            "Time to flex on the channel :neocat_cool:",
+        ];
+        
+        const greeting = greetings[Math.floor(Math.random() * greetings.length)];
+        const closing = closings[Math.floor(Math.random() * closings.length)];
+        
+        const today = new Date().toISOString().split('T')[0];
+        let statsText = '';
+        
+        try {
+            const stats = await getCodingStats(today);
+            console.log('HackaTime stats response:', JSON.stringify(stats, null, 2));
+            if (stats && stats.projects && stats.projects.length > 0) {
+                const topProjects = stats.projects.slice(0, 3).map(p => `${p.name} (${p.hours}h ${p.minutes}m)`).join('\n • ');
+                statsText = `\n_Today you've worked on:_\n • ${topProjects}`;
+            }
+        } catch (e) {
+            console.log('Could not fetch coding stats for daily message:', e.message);
+        }
+        
         await app.client.chat.postMessage({
             channel: CHANNEL_ID,
-            text: `<@${USER_ID}> how was your day??? Go share on a yap pls :3`
+            text: `<@${USER_ID}> ${greeting}${statsText}\n${closing}`
         });
     } catch (error) {
         console.error('Error sending daily ritual message:', error);
     }
-});
+}
 
-cron.schedule('*/2 * * * *', async () => {
-    await syncMemoriesToVector();
-});
+cron.schedule('0 20 * * *', sendDailyRitualMessage);
 
 (async () => {
     await app.start(process.env.PORT || 3000);
