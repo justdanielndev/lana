@@ -397,7 +397,10 @@ async function executeToolCall(toolName, toolInput) {
     switch (toolName) {
         case 'add_memory': {
             const docId = await addMemoryToAppwrite(toolInput.content, toolInput.category);
-            return { success: true, message: `Memory saved with ID ${docId}. Will be synced to vector DB shortly.` };
+            if (toolInput.category !== 'history') {
+                await syncMemoriesToVector();
+            }
+            return { success: true, message: `Memory saved with ID ${docId}.` };
         }
         
         case 'yap': {
@@ -583,9 +586,8 @@ async function getSlackHistory(channelId, limit = 20, threadTs = null) {
 
         const threadMessages = threadResult.messages.slice(-10);
         const messages = threadMessages
-            .filter(msg => !msg.bot_id)
             .map(msg => ({
-                role: "user",
+                role: msg.bot_id ? "assistant" : "user",
                 content: msg.text || "",
                 timestamp: msg.ts,
                 type: "thread_reply"
@@ -618,13 +620,24 @@ async function storeConversationHistory(userMessage, assistantResponse) {
 }
 
 async function chat(userMessage, fileInfo = null, channelId = null, userId = null, messageTs = null, threadTs = null) {    
-     const memories = await queryMemories(userMessage, 5);
+     const memories = await queryMemories(userMessage, 20);
+     console.log('Retrieved memories:', memories);
      let memoryContext = "";
-     const nonHistoryMemories = memories.filter(m => m.category !== 'history');
-     if (nonHistoryMemories.length > 0) {
-         memoryContext = "\n\nRelevant memories:\n" + 
-             nonHistoryMemories.map(m => `- [${m.category}] ${m.content}`).join("\n");
+     
+     const actualMemories = memories.filter(m => m.category !== 'history' && m.score > 0.5).slice(0, 10);
+     const historyMemories = memories.filter(m => m.category === 'history' && m.score > 0.65).slice(0, 10);
+     
+     if (actualMemories.length > 0) {
+         memoryContext += "\n\nRelevant memories:\n" + 
+             actualMemories.map(m => `- [${m.category}] ${m.content}`).join("\n");
      }
+     
+     if (historyMemories.length > 0) {
+         memoryContext += "\n\nRelevant history:\n" + 
+             historyMemories.map(m => m.content).join("\n---\n");
+     }
+     
+     console.log('Memory context:', memoryContext);
 
      const systemPrompt = `You are Zoe's personal AI assistant bot on Slack. You're friendly, helpful, and have a cute personality (use :3 and similar emoticons sometimes).
 
@@ -642,9 +655,11 @@ You can:
 
 About tools:
 - send_message, react, search_messages: Execute immediately
-- add_memory, yap, cdn_*: These are queued async operations - tell the user you're queuing them
+- add_memory, yap, cdn_*: These are queued async operations - tell the user you're queuing them EXCEPT for add_memory which is silent and happens in the background when you find it useful to remember smth.
 
 When Zoe shares something important about herself, use add_memory to save it.
+
+Do NOT randomly react. At most run one react tool call per conversation, and only if it's really needed.
 
 You can send multiple messages in one response - just call send_message multiple times with different content.
 
@@ -676,10 +691,12 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
     const messages = [{ role: "system", content: systemPrompt }];
     
     let slackHistory = [];
-    if (channelId) {
+    if (channelId && threadTs) {
         slackHistory = await getSlackHistory(channelId, 20, threadTs);
         for (const msg of slackHistory) {
-            messages.push({ role: msg.role, content: msg.content, timestamp: msg.timestamp });
+            if (msg.timestamp !== messageTs) {
+                messages.push({ role: msg.role, content: msg.content, timestamp: msg.timestamp });
+            }
         }
     }
     
@@ -692,7 +709,7 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
         threadTs,
         history: slackHistory
     };
-    
+        
     let response = await axios.post(HC_CHAT_URL, {
         model: "google/gemini-3-flash-preview",
         messages: messages,
@@ -719,6 +736,8 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
                 const args = JSON.parse(toolCall.function.arguments);
                 let toolResult;
                 
+                console.log(`Executing tool: ${toolCall.function.name}`, args);
+                
                 if (toolCall.function.name === 'send_message') {
                     usedSendMessage = true;
                 }
@@ -728,10 +747,11 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
                  } else if (queuedTools.includes(toolCall.function.name)) {
                      queueToolExecution(toolCall.function.name, args, userId, channelId, threadTs);
                      toolResult = { queued: true, message: `${toolCall.function.name} queued` };
-                } else {
-                    toolResult = { success: false, message: `Unknown tool: ${toolCall.function.name}` };
-                }
+                 } else {
+                     toolResult = { success: false, message: `Unknown tool: ${toolCall.function.name}` };
+                 }
 
+                console.log(`Tool result:`, toolResult);
                 messages.push({
                     role: "tool",
                     tool_call_id: toolCall.id,
