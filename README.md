@@ -1,4 +1,4 @@
-# Zoe's assistant angel
+# Lana (Zoe's assistant angel)
 
 After the sad demise of Slack workflows on the HC Slack, I moved what used to be a custom workflow here. 
 It started as a simple bot that would listen to my DMs and forward them to a specific channel, as well as allow me to send things to CDN to get uploaded, but now it's much more.
