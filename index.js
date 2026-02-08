@@ -23,6 +23,7 @@ const APPWRITE_API_KEY = process.env.APPWRITE_API_KEY;
 const APPWRITE_BUCKET_ID = process.env.APPWRITE_BUCKET_ID;
 const APPWRITE_DATABASE_ID = process.env.APPWRITE_DATABASE_ID;
 const APPWRITE_MEMORY_COLLECTION_ID = process.env.APPWRITE_MEMORY_COLLECTION_ID || 'memory-items';
+const APPWRITE_SETTINGS_COLLECTION_ID = process.env.APPWRITE_SETTINGS_COLLECTION_ID || 'settings';
 
 const client = new appwrite.Client();
 client
@@ -41,11 +42,134 @@ const vectorIndex = new Index({
 const HC_API_KEY = process.env.HC_API_KEY;
 const HC_CHAT_URL = 'https://ai.hackclub.com/proxy/v1/chat/completions';
 const HC_EMBEDDINGS_URL = 'https://ai.hackclub.com/proxy/v1/embeddings';
-const HC_CHAT_MODEL = process.env.HC_CHAT_MODEL || 'google/gemini-3-flash-preview';
+const DEFAULT_HC_CHAT_MODEL = process.env.HC_CHAT_MODEL || 'google/gemini-3-flash-preview';
 const HACKATIME_API_KEY = process.env.HACKATIME_API_KEY;
 const HACKATIME_BASE_URL = 'https://hackatime.hackclub.com/api/v1';
-const SYSTEM_PROMPT_TEMPLATE_PATH = path.join(__dirname, 'prompts', 'system-prompt.txt');
-const SYSTEM_PROMPT_TEMPLATE = fs.readFileSync(SYSTEM_PROMPT_TEMPLATE_PATH, 'utf8').trim();
+
+
+let settingsCache = {
+    prompt: null,
+    model: null,
+    disabledTools: new Set(),
+    lastFetched: null
+};
+
+async function getSetting(settingId) {
+    try {
+        const docs = await databases.listDocuments(
+            APPWRITE_DATABASE_ID,
+            APPWRITE_SETTINGS_COLLECTION_ID,
+            [appwrite.Query.equal('settingId', settingId)]
+        );
+        return docs.documents.length > 0 ? docs.documents[0].settingValue : null;
+    } catch (error) {
+        console.error(`Error fetching setting ${settingId}:`, error.message);
+        return null;
+    }
+}
+
+async function setSetting(settingId, settingValue) {
+    try {
+        const docs = await databases.listDocuments(
+            APPWRITE_DATABASE_ID,
+            APPWRITE_SETTINGS_COLLECTION_ID,
+            [appwrite.Query.equal('settingId', settingId)]
+        );
+        
+        if (docs.documents.length > 0) {
+            await databases.updateDocument(
+                APPWRITE_DATABASE_ID,
+                APPWRITE_SETTINGS_COLLECTION_ID,
+                docs.documents[0].$id,
+                { settingValue }
+            );
+        } else {
+            await databases.createDocument(
+                APPWRITE_DATABASE_ID,
+                APPWRITE_SETTINGS_COLLECTION_ID,
+                appwrite.ID.unique(),
+                { settingId, settingValue }
+            );
+        }
+        return true;
+    } catch (error) {
+        console.error(`Error setting ${settingId}:`, error.message);
+        return false;
+    }
+}
+
+async function deleteSetting(settingId) {
+    try {
+        const docs = await databases.listDocuments(
+            APPWRITE_DATABASE_ID,
+            APPWRITE_SETTINGS_COLLECTION_ID,
+            [appwrite.Query.equal('settingId', settingId)]
+        );
+        
+        if (docs.documents.length > 0) {
+            await databases.deleteDocument(
+                APPWRITE_DATABASE_ID,
+                APPWRITE_SETTINGS_COLLECTION_ID,
+                docs.documents[0].$id
+            );
+        }
+        return true;
+    } catch (error) {
+        console.error(`Error deleting setting ${settingId}:`, error.message);
+        return false;
+    }
+}
+
+async function refreshSettings() {
+    try {
+        const docs = await databases.listDocuments(
+            APPWRITE_DATABASE_ID,
+            APPWRITE_SETTINGS_COLLECTION_ID,
+            [appwrite.Query.limit(100)]
+        );
+        
+        settingsCache.prompt = null;
+        settingsCache.model = null;
+        settingsCache.disabledTools = new Set();
+        
+        for (const doc of docs.documents) {
+            if (doc.settingId === 'prompt') {
+                settingsCache.prompt = doc.settingValue;
+            } else if (doc.settingId === 'model') {
+                settingsCache.model = doc.settingValue;
+            } else if (doc.settingId.startsWith('tool-') && doc.settingValue === 'disabled') {
+                const toolId = doc.settingId.replace('tool-', '');
+                settingsCache.disabledTools.add(toolId);
+            }
+        }
+        
+        settingsCache.lastFetched = new Date();
+    } catch (error) {
+        console.error('Error refreshing settings:', error.message);
+    }
+}
+
+function getActiveModel() {
+    return settingsCache.model || DEFAULT_HC_CHAT_MODEL;
+}
+
+function getActivePrompt() {
+    return settingsCache.prompt || 'You are a helpful assistant.';
+}
+
+async function fetchAvailableModels() {
+    try {
+        const response = await axios.get('https://ai.hackclub.com/proxy/v1/models', {
+            headers: {
+                'Authorization': `Bearer ${HC_API_KEY}`
+            }
+        });
+        return response.data.data.map(m => m.id).sort();
+    } catch (error) {
+        console.error('Error fetching models:', error.message);
+        return [DEFAULT_HC_CHAT_MODEL];
+    }
+}
 
 let pendingUploads = {};
 let lastSyncTime = null;
@@ -70,7 +194,7 @@ function loadToolsFromDisk() {
         async: 'async'
     };
 
-    const aiTools = [];
+    const allToolDeclarations = [];
     const instantToolNames = [];
     const asyncToolNames = [];
     const toolHandlers = new Map();
@@ -106,7 +230,7 @@ function loadToolsFromDisk() {
             }
 
             seenToolNames.add(toolName);
-            aiTools.push(declaration);
+            allToolDeclarations.push(declaration);
             toolHandlers.set(toolName, { run, executionType });
 
             if (executionType === 'instant') {
@@ -118,7 +242,7 @@ function loadToolsFromDisk() {
     }
 
     return {
-        aiTools,
+        allToolDeclarations,
         instantToolNames,
         asyncToolNames,
         toolHandlers
@@ -126,11 +250,30 @@ function loadToolsFromDisk() {
 }
 
 const {
-    aiTools: AI_TOOLS,
-    instantToolNames: INSTANT_TOOLS,
-    asyncToolNames: ASYNC_TOOLS,
+    allToolDeclarations: ALL_TOOL_DECLARATIONS,
+    instantToolNames: ALL_INSTANT_TOOLS,
+    asyncToolNames: ALL_ASYNC_TOOLS,
     toolHandlers: TOOL_HANDLERS
 } = loadToolsFromDisk();
+
+function getActiveTools() {
+    const disabledTools = settingsCache.disabledTools;
+    return ALL_TOOL_DECLARATIONS.filter(t => !disabledTools.has(t.function.name));
+}
+
+function getActiveInstantTools() {
+    const disabledTools = settingsCache.disabledTools;
+    return ALL_INSTANT_TOOLS.filter(t => !disabledTools.has(t));
+}
+
+function getActiveAsyncTools() {
+    const disabledTools = settingsCache.disabledTools;
+    return ALL_ASYNC_TOOLS.filter(t => !disabledTools.has(t));
+}
+
+function getAllToolNames() {
+    return ALL_TOOL_DECLARATIONS.map(t => t.function.name);
+}
 
 async function getCodingStats(startDate = null, endDate = null) {
     try {
@@ -138,9 +281,7 @@ async function getCodingStats(startDate = null, endDate = null) {
         
         if (startDate) url += `&start_date=${startDate}`;
         if (endDate) url += `&end_date=${endDate}`;
-        
-        console.log(`HackaTime URL: ${url}`);
-        
+                
         const response = await axios.get(url, {
             headers: {
                 'Authorization': `Bearer ${HACKATIME_API_KEY}`
@@ -412,7 +553,7 @@ Send a brief, natural response about what happened. Keep it short and use :3 if 
 You're in Slack, so you need to use its markdown if you need to use formatting. Links for example are like <link|text>.`;
     
     const response = await axios.post(HC_CHAT_URL, {
-        model: HC_CHAT_MODEL,
+        model: getActiveModel(),
         messages: [
             { role: "system", content: "You're Zoe's AI assistant. Respond briefly to tool results." },
             { role: "user", content: prompt }
@@ -477,7 +618,6 @@ async function storeConversationHistory(userMessage, assistantResponse) {
 
 async function chat(userMessage, fileInfo = null, channelId = null, userId = null, messageTs = null, threadTs = null) {    
      const memories = await queryMemories(userMessage, 50);
-     console.log('Retrieved memories:', memories);
      let memoryContext = "";
      
      const actualMemories = memories.filter(m => m.category !== 'history' && m.score > 0.5).slice(0, 10);
@@ -489,7 +629,7 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
      
      console.log('Memory context:', memoryContext);
 
-    const systemPrompt = SYSTEM_PROMPT_TEMPLATE
+    const systemPrompt = getActivePrompt()
         .replace('{{CURRENT_DATETIME}}', new Date().toLocaleString())
         .replace('{{MEMORY_CONTEXT}}', memoryContext);
 
@@ -520,12 +660,15 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
         history: slackHistory
     };
         
+    const activeModel = getActiveModel();
+    const activeTools = getActiveTools();
+    
     let response;
     try {
         response = await axios.post(HC_CHAT_URL, {
-            model: HC_CHAT_MODEL,
+            model: activeModel,
             messages: messages,
-            tools: AI_TOOLS,
+            tools: activeTools,
             max_tokens: 2048
         }, {
             headers: {
@@ -535,7 +678,7 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
         });
     } catch (error) {
         console.error('AI API Error:', error.response?.data || error.message);
-        console.error('Request size:', JSON.stringify({model: HC_CHAT_MODEL, messages: messages, tools: AI_TOOLS, max_tokens: 2048}).length, 'bytes');
+        console.error('Request size:', JSON.stringify({model: activeModel, messages: messages, tools: activeTools, max_tokens: 2048}).length, 'bytes');
         throw error;
     }
 
@@ -556,13 +699,16 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
                     usedSendMessage = true;
                 }
                 
-                if (INSTANT_TOOLS.includes(toolCall.function.name)) {
+                const activeInstantTools = getActiveInstantTools();
+                const activeAsyncTools = getActiveAsyncTools();
+                
+                if (activeInstantTools.includes(toolCall.function.name)) {
                      toolResult = await executeImmediateTool(toolCall.function.name, args, currentMessageContext);
-                 } else if (ASYNC_TOOLS.includes(toolCall.function.name)) {
+                 } else if (activeAsyncTools.includes(toolCall.function.name)) {
                      queueToolExecution(toolCall.function.name, args, userId, channelId, threadTs);
                      toolResult = { queued: true, message: `${toolCall.function.name} queued` };
                  } else {
-                     toolResult = { success: false, message: `Unknown tool: ${toolCall.function.name}` };
+                     toolResult = { success: false, message: `Unknown or disabled tool: ${toolCall.function.name}` };
                  }
 
                 console.log(`Tool result:`, toolResult);
@@ -583,9 +729,9 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
 
         try {
             response = await axios.post(HC_CHAT_URL, {
-                model: HC_CHAT_MODEL,
+                model: activeModel,
                 messages: messages,
-                tools: AI_TOOLS,
+                tools: activeTools,
                 max_tokens: 2048
             }, {
                 headers: {
@@ -595,7 +741,7 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
             });
         } catch (error) {
             console.error('AI API Error:', error.response?.data || error.message);
-            console.error('Request size:', JSON.stringify({model: HC_CHAT_MODEL, messages: messages, tools: AI_TOOLS, max_tokens: 2048}).length, 'bytes');
+            console.error('Request size:', JSON.stringify({model: activeModel, messages: messages, tools: activeTools, max_tokens: 2048}).length, 'bytes');
             throw error;
         }
 
@@ -871,6 +1017,315 @@ app.view('reply_yap_suggestion', async ({ ack, body, view, client }) => {
     }
 });
 
+async function buildHomeTab(userId) {
+    const isOwner = userId === USER_ID;
+    
+    if (!isOwner) {
+        return {
+            type: 'home',
+            blocks: [
+                {
+                    type: 'section',
+                    text: {
+                        type: 'mrkdwn',
+                        text: "*Access Denied*\n\nYou don't have permission to view this page."
+                    }
+                }
+            ]
+        };
+    }
+    
+    const currentModel = getActiveModel();
+    const currentPrompt = getActivePrompt();
+    const allTools = getAllToolNames();
+    const disabledTools = settingsCache.disabledTools;
+    
+    const toolOptions = allTools.map(toolName => ({
+        text: { type: 'plain_text', text: toolName },
+        value: toolName
+    }));
+    
+    const enabledTools = allTools.filter(t => !disabledTools.has(t));
+    const initialOptions = enabledTools.length > 0 
+        ? enabledTools.map(t => ({ text: { type: 'plain_text', text: t }, value: t }))
+        : undefined;
+    
+    return {
+        type: 'home',
+        blocks: [
+            {
+                type: 'header',
+                text: {
+                    type: 'plain_text',
+                    text: 'Zoe Bot Settings :3',
+                    emoji: true
+                }
+            },
+            {
+                type: 'divider'
+            },
+            {
+                type: 'section',
+                text: {
+                    type: 'mrkdwn',
+                    text: `*Current Model:* \`${currentModel}\``
+                },
+                accessory: {
+                    type: 'button',
+                    text: {
+                        type: 'plain_text',
+                        text: 'Edit Model',
+                        emoji: true
+                    },
+                    action_id: 'edit_model_button'
+                }
+            },
+            {
+                type: 'section',
+                text: {
+                    type: 'mrkdwn',
+                    text: `*System Prompt:* _${currentPrompt.substring(0, 100)}..._`
+                },
+                accessory: {
+                    type: 'button',
+                    text: {
+                        type: 'plain_text',
+                        text: 'Edit Prompt',
+                        emoji: true
+                    },
+                    action_id: 'edit_prompt_button'
+                }
+            },
+
+            {
+                type: 'divider'
+            },
+            {
+                type: 'section',
+                text: {
+                    type: 'mrkdwn',
+                    text: '*Enabled Tools*'
+                }
+            },
+            {
+                type: 'actions',
+                block_id: 'tools_checkboxes_block',
+                elements: [
+                    {
+                        type: 'checkboxes',
+                        action_id: 'tools_checkboxes',
+                        options: toolOptions,
+                        ...(initialOptions && { initial_options: initialOptions })
+                    }
+                ]
+            },
+            {
+                type: 'divider'
+            },
+            {
+                type: 'context',
+                elements: [
+                    {
+                        type: 'mrkdwn',
+                        text: `Last settings refresh: ${settingsCache.lastFetched ? settingsCache.lastFetched.toLocaleString() : 'Never'}`
+                    }
+                ]
+            },
+            {
+                type: 'actions',
+                elements: [
+                    {
+                        type: 'button',
+                        text: {
+                            type: 'plain_text',
+                            text: 'Refresh Settings',
+                            emoji: true
+                        },
+                        action_id: 'refresh_settings_button'
+                    }
+                ]
+            }
+        ]
+    };
+}
+
+app.event('app_home_opened', async ({ event, client }) => {
+    try {
+        await refreshSettings();
+        const homeView = await buildHomeTab(event.user);
+        await client.views.publish({
+            user_id: event.user,
+            view: homeView
+        });
+    } catch (error) {
+        console.error('Error publishing home tab:', error);
+    }
+});
+
+app.action('refresh_settings_button', async ({ ack, body, client }) => {
+    await ack();
+    try {
+        await refreshSettings();
+        const homeView = await buildHomeTab(body.user.id);
+        await client.views.publish({
+            user_id: body.user.id,
+            view: homeView
+        });
+    } catch (error) {
+        console.error('Error refreshing settings:', error);
+    }
+});
+
+app.action('edit_model_button', async ({ ack, body, client }) => {
+    await ack();
+    try {
+        const models = await fetchAvailableModels();
+        const currentModel = getActiveModel();
+        
+        const modelOptions = models.map(m => ({
+            text: { type: 'plain_text', text: m.length > 75 ? m.substring(0, 72) + '...' : m },
+            value: m
+        }));
+        
+        const initialOption = modelOptions.find(o => o.value === currentModel) || modelOptions[0];
+        
+        await client.views.open({
+            trigger_id: body.trigger_id,
+            view: {
+                type: 'modal',
+                callback_id: 'save_model_modal',
+                title: {
+                    type: 'plain_text',
+                    text: 'Edit Model'
+                },
+                blocks: [
+                    {
+                        type: 'input',
+                        block_id: 'model_input_block',
+                        element: {
+                            type: 'static_select',
+                            action_id: 'model_input',
+                            options: modelOptions,
+                            initial_option: initialOption
+                        },
+                        label: {
+                            type: 'plain_text',
+                            text: 'Model'
+                        }
+                    }
+                ],
+                submit: {
+                    type: 'plain_text',
+                    text: 'Save'
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error opening model modal:', error);
+    }
+});
+
+app.view('save_model_modal', async ({ ack, body, view, client }) => {
+    await ack();
+    const model = view.state.values.model_input_block.model_input.selected_option?.value;
+    
+    if (model) {
+        await setSetting('model', model);
+        await refreshSettings();
+    }
+    
+    const homeView = await buildHomeTab(body.user.id);
+    await client.views.publish({
+        user_id: body.user.id,
+        view: homeView
+    });
+});
+
+app.action('edit_prompt_button', async ({ ack, body, client }) => {
+    await ack();
+    try {
+        await client.views.open({
+            trigger_id: body.trigger_id,
+            view: {
+                type: 'modal',
+                callback_id: 'save_prompt_modal',
+                title: {
+                    type: 'plain_text',
+                    text: 'Edit System Prompt'
+                },
+                blocks: [
+                    {
+                        type: 'input',
+                        block_id: 'prompt_input_block',
+                        element: {
+                            type: 'plain_text_input',
+                            action_id: 'prompt_input',
+                            multiline: true,
+                            initial_value: getActivePrompt()
+                        },
+                        label: {
+                            type: 'plain_text',
+                            text: 'System Prompt'
+                        }
+                    }
+                ],
+                submit: {
+                    type: 'plain_text',
+                    text: 'Save'
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error opening prompt modal:', error);
+    }
+});
+
+app.view('save_prompt_modal', async ({ ack, body, view, client }) => {
+    await ack();
+    const prompt = view.state.values.prompt_input_block.prompt_input.value;
+    
+    if (prompt && prompt.trim()) {
+        await setSetting('prompt', prompt.trim());
+        await refreshSettings();
+    }
+    
+    const homeView = await buildHomeTab(body.user.id);
+    await client.views.publish({
+        user_id: body.user.id,
+        view: homeView
+    });
+});
+
+
+
+app.action('tools_checkboxes', async ({ ack, body, action, client }) => {
+    await ack();
+    
+    try {
+        const allTools = getAllToolNames();
+        const selectedTools = new Set(action.selected_options.map(o => o.value));
+        
+        for (const toolName of allTools) {
+            const settingId = `tool-${toolName}`;
+            if (selectedTools.has(toolName)) {
+                await deleteSetting(settingId);
+            } else {
+                await setSetting(settingId, 'disabled');
+            }
+        }
+        
+        await refreshSettings();
+        
+        const homeView = await buildHomeTab(body.user.id);
+        await client.views.publish({
+            user_id: body.user.id,
+            view: homeView
+        });
+    } catch (error) {
+        console.error('Error updating tools:', error);
+    }
+});
+
 app.event('member_joined_channel', async ({ event, client }) => {
     if (event.channel === CHANNEL_ID) {
         try {
@@ -943,7 +1398,6 @@ async function sendDailyRitualMessage() {
         
         try {
             const stats = await getCodingStats(today);
-            console.log('HackaTime stats response:', JSON.stringify(stats, null, 2));
             if (stats && stats.projects && stats.projects.length > 0) {
                 const topProjects = stats.projects.slice(0, 3).map(p => `${p.name} (${p.hours}h ${p.minutes}m)`).join('\n • ');
                 statsText = `\n_Today you've worked on:_\n • ${topProjects}`;
@@ -967,6 +1421,8 @@ cron.schedule('0 20 * * *', sendDailyRitualMessage);
     await app.start(process.env.PORT || 3000);
     console.log('Running :3');
 
+    await refreshSettings();
+    
     if (USER_ID) {
         try {
             await app.client.chat.postMessage({
