@@ -17,6 +17,7 @@ const app = new App({
 
 const USER_ID = process.env.USER_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID;
+const START_NOTIFS_CHANNEL_ID = process.env.START_NOTIFS_CHANNEL_ID;
 const APPWRITE_ENDPOINT = process.env.APPWRITE_ENDPOINT;
 const APPWRITE_PROJECT_ID = process.env.APPWRITE_PROJECT_ID;
 const APPWRITE_API_KEY = process.env.APPWRITE_API_KEY;
@@ -24,6 +25,7 @@ const APPWRITE_BUCKET_ID = process.env.APPWRITE_BUCKET_ID;
 const APPWRITE_DATABASE_ID = process.env.APPWRITE_DATABASE_ID;
 const APPWRITE_MEMORY_COLLECTION_ID = process.env.APPWRITE_MEMORY_COLLECTION_ID || 'memory-items';
 const APPWRITE_SETTINGS_COLLECTION_ID = process.env.APPWRITE_SETTINGS_COLLECTION_ID || 'settings';
+const APPWRITE_REMINDERS_COLLECTION_ID = process.env.APPWRITE_REMINDERS_COLLECTION_ID || 'reminders';
 
 const client = new appwrite.Client();
 client
@@ -45,6 +47,7 @@ const HC_EMBEDDINGS_URL = 'https://ai.hackclub.com/proxy/v1/embeddings';
 const DEFAULT_HC_CHAT_MODEL = process.env.HC_CHAT_MODEL || 'google/gemini-3-flash-preview';
 const HACKATIME_API_KEY = process.env.HACKATIME_API_KEY;
 const HACKATIME_BASE_URL = 'https://hackatime.hackclub.com/api/v1';
+const SPANISH_TIME_ZONE = 'Europe/Madrid';
 
 
 let settingsCache = {
@@ -175,6 +178,7 @@ let pendingUploads = {};
 let lastSyncTime = null;
 let toolQueue = [];
 let isProcessingQueue = false;
+let isProcessingReminders = false;
 
 const REFUSAL_MESSAGES = [
     "Can't talk here, nice try tho :loll: If you want to reply to a yap, pls do that in the channel.",
@@ -272,7 +276,281 @@ function getActiveAsyncTools() {
 }
 
 function getAllToolNames() {
-    return ALL_TOOL_DECLARATIONS.map(t => t.function.name);
+    return ALL_TOOL_DECLARATIONS.map(t => t.function.name).sort();
+}
+
+function formatDateTimeInSpanishTime(dateInput) {
+    const date = new Date(dateInput);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    const datePart = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: SPANISH_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(date);
+
+    const timePart = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: SPANISH_TIME_ZONE,
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    }).format(date);
+
+    return `${datePart}T${timePart} (${SPANISH_TIME_ZONE})`;
+}
+
+function getCurrentSpanishDateTimeString() {
+    return formatDateTimeInSpanishTime(new Date().toISOString());
+}
+
+function getOrdinalNumberLabel(number) {
+    const mod100 = number % 100;
+    if (mod100 >= 11 && mod100 <= 13) {
+        return `${number}th`;
+    }
+    const mod10 = number % 10;
+    if (mod10 === 1) return `${number}st`;
+    if (mod10 === 2) return `${number}nd`;
+    if (mod10 === 3) return `${number}rd`;
+    return `${number}th`;
+}
+
+function parseReminderContent(content) {
+    try {
+        const parsed = JSON.parse(content);
+        if (parsed && typeof parsed === 'object') {
+            return {
+                message: typeof parsed.message === 'string' ? parsed.message : '',
+                userId: typeof parsed.userId === 'string' ? parsed.userId : null,
+                channelId: typeof parsed.channelId === 'string' ? parsed.channelId : null,
+                threadTs: typeof parsed.threadTs === 'string' ? parsed.threadTs : null,
+                status: parsed.status === 'read' ? 'read' : 'unread',
+                repeatCount: Number.isInteger(parsed.repeatCount) && parsed.repeatCount >= 0 ? parsed.repeatCount : 0,
+                createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : null,
+                updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
+                lastNotifiedAt: typeof parsed.lastNotifiedAt === 'string' ? parsed.lastNotifiedAt : null
+            };
+        }
+    } catch (_) {
+    }
+
+    return {
+        message: typeof content === 'string' ? content : '',
+        userId: USER_ID || null,
+        channelId: USER_ID || null,
+        threadTs: null,
+        status: 'unread',
+        repeatCount: 0,
+        createdAt: null,
+        updatedAt: null,
+        lastNotifiedAt: null
+    };
+}
+
+function serializeReminderContent(state) {
+    return JSON.stringify({
+        message: state.message,
+        userId: state.userId,
+        channelId: state.channelId,
+        threadTs: state.threadTs,
+        status: state.status,
+        repeatCount: state.repeatCount,
+        createdAt: state.createdAt,
+        updatedAt: state.updatedAt,
+        lastNotifiedAt: state.lastNotifiedAt
+    });
+}
+
+function normalizeReminderDoc(doc) {
+    const state = parseReminderContent(doc.content);
+    return {
+        id: doc.$id,
+        notifyDateTime: formatDateTimeInSpanishTime(doc.notifydatetime) || doc.notifydatetime,
+        notifyDateTimeUtc: doc.notifydatetime,
+        content: state.message,
+        status: state.status,
+        repeatCount: state.repeatCount,
+        userId: state.userId,
+        channelId: state.channelId,
+        threadTs: state.threadTs,
+        createdAt: state.createdAt,
+        updatedAt: state.updatedAt,
+        lastNotifiedAt: state.lastNotifiedAt
+    };
+}
+
+async function createReminder({ userId, channelId, threadTs = null, content, notifyDateTime }) {
+    const now = new Date().toISOString();
+    const state = {
+        message: content,
+        userId,
+        channelId: channelId || userId,
+        threadTs,
+        status: 'unread',
+        repeatCount: 0,
+        createdAt: now,
+        updatedAt: now,
+        lastNotifiedAt: null
+    };
+
+    const reminderDoc = await databases.createDocument(
+        APPWRITE_DATABASE_ID,
+        APPWRITE_REMINDERS_COLLECTION_ID,
+        appwrite.ID.unique(),
+        {
+            notifydatetime: notifyDateTime,
+            content: serializeReminderContent(state)
+        }
+    );
+
+    return normalizeReminderDoc(reminderDoc);
+}
+
+async function listReminders(userId, { includeRead = false } = {}) {
+    const docs = await databases.listDocuments(
+        APPWRITE_DATABASE_ID,
+        APPWRITE_REMINDERS_COLLECTION_ID,
+        [
+            appwrite.Query.orderDesc('$createdAt'),
+            appwrite.Query.limit(200)
+        ]
+    );
+
+    return docs.documents
+        .map(normalizeReminderDoc)
+        .filter((reminder) => reminder.userId === userId)
+        .filter((reminder) => includeRead || reminder.status !== 'read');
+}
+
+async function editReminder(reminderId, userId, updates = {}) {
+    const reminderDoc = await databases.getDocument(
+        APPWRITE_DATABASE_ID,
+        APPWRITE_REMINDERS_COLLECTION_ID,
+        reminderId
+    );
+
+    const state = parseReminderContent(reminderDoc.content);
+    if (state.userId !== userId) {
+        return { success: false, message: "That reminder doesn't belong to you." };
+    }
+
+    const now = new Date().toISOString();
+    let nextNotifyDateTime = reminderDoc.notifydatetime;
+
+    if (typeof updates.content === 'string' && updates.content.trim()) {
+        state.message = updates.content.trim();
+    }
+
+    if (typeof updates.notifyDateTime === 'string') {
+        const parsed = new Date(updates.notifyDateTime);
+        if (Number.isNaN(parsed.getTime())) {
+            return { success: false, message: "Invalid notify datetime." };
+        }
+        nextNotifyDateTime = parsed.toISOString();
+    }
+
+    if (updates.markAsRead === true) {
+        state.status = 'read';
+    }
+
+    if (updates.markAsRead === false) {
+        state.status = 'unread';
+    }
+
+    if (updates.resetRepeats === true) {
+        state.repeatCount = 0;
+        state.lastNotifiedAt = null;
+    }
+
+    state.updatedAt = now;
+
+    const updatedDoc = await databases.updateDocument(
+        APPWRITE_DATABASE_ID,
+        APPWRITE_REMINDERS_COLLECTION_ID,
+        reminderId,
+        {
+            notifydatetime: nextNotifyDateTime,
+            content: serializeReminderContent(state)
+        }
+    );
+
+    return { success: true, reminder: normalizeReminderDoc(updatedDoc) };
+}
+
+async function processPendingReminders() {
+    if (isProcessingReminders) return;
+    isProcessingReminders = true;
+
+    try {
+        const now = new Date();
+        const nowIso = now.toISOString();
+        const allReminderDocs = await databases.listDocuments(
+            APPWRITE_DATABASE_ID,
+            APPWRITE_REMINDERS_COLLECTION_ID,
+            [
+                appwrite.Query.orderDesc('$createdAt'),
+                appwrite.Query.limit(200)
+            ]
+        );
+
+        for (const reminderDoc of allReminderDocs.documents) {
+            try {
+                const notifyDate = new Date(reminderDoc.notifydatetime);
+                if (Number.isNaN(notifyDate.getTime())) {
+                    console.error(`Skipping reminder ${reminderDoc.$id}: invalid notifydatetime "${reminderDoc.notifydatetime}"`);
+                    continue;
+                }
+                if (notifyDate > now) {
+                    continue;
+                }
+
+                const state = parseReminderContent(reminderDoc.content);
+                if (state.status === 'read') {
+                    continue;
+                }
+                if (!state.message || !state.userId) {
+                    continue;
+                }
+
+                const reminderNumber = state.repeatCount + 1;
+                const reminderText = reminderNumber === 1
+                    ? `${state.message}`
+                    : `(${getOrdinalNumberLabel(reminderNumber)} reminder) ${state.message}`;
+
+                await app.client.chat.postMessage({
+                    channel: state.channelId || state.userId,
+                    text: reminderText,
+                    thread_ts: state.threadTs || undefined
+                });
+
+                state.repeatCount += 1;
+                state.lastNotifiedAt = nowIso;
+                state.updatedAt = nowIso;
+
+                const nextNotificationDate = new Date(now.getTime() + (30 * 60 * 1000)).toISOString();
+
+                await databases.updateDocument(
+                    APPWRITE_DATABASE_ID,
+                    APPWRITE_REMINDERS_COLLECTION_ID,
+                    reminderDoc.$id,
+                    {
+                        notifydatetime: nextNotificationDate,
+                        content: serializeReminderContent(state)
+                    }
+                );
+            } catch (error) {
+                console.error('Error processing reminder:', error);
+            }
+        }
+    } catch (error) {
+        console.error('Error processing pending reminders:', error);
+    } finally {
+        isProcessingReminders = false;
+    }
 }
 
 async function getCodingStats(startDate = null, endDate = null) {
@@ -449,11 +727,19 @@ function getToolDeps() {
         InputFile,
         rootDir: __dirname,
         CHANNEL_ID,
+        USER_ID,
         SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN,
+        APPWRITE_DATABASE_ID,
         APPWRITE_BUCKET_ID,
+        APPWRITE_REMINDERS_COLLECTION_ID,
+        databases,
         getCodingStats,
         addMemoryToAppwrite,
-        syncMemoriesToVector
+        syncMemoriesToVector,
+        createReminder,
+        listReminders,
+        editReminder,
+        processPendingReminders
     };
 }
 
@@ -474,7 +760,7 @@ async function executeImmediateTool(toolName, toolInput, context) {
     }
 }
 
-async function executeToolCall(toolName, toolInput) {
+async function executeToolCall(toolName, toolInput, context = null) {
     const handler = TOOL_HANDLERS.get(toolName);
     if (!handler || handler.executionType !== 'async') {
         console.log(`Unknown tool: ${toolName}`);
@@ -483,7 +769,7 @@ async function executeToolCall(toolName, toolInput) {
 
     return handler.run({
         toolInput,
-        messageContext: null,
+        messageContext: context,
         deps: getToolDeps()
     });
 }
@@ -513,7 +799,11 @@ async function processToolQueue() {
         const { toolName, toolInput, userId, channelId, resolve } = job;
                 
         try {
-            const result = await executeToolCall(toolName, toolInput);
+            const result = await executeToolCall(toolName, toolInput, {
+                userId: job.userId,
+                channelId: job.channelId,
+                threadTs: job.threadTs
+            });
 
             const silentTools = ['add_memory', 'send_message', 'react'];
             if (!silentTools.includes(toolName)) {
@@ -630,8 +920,9 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
      console.log('Memory context:', memoryContext);
 
     const systemPrompt = getActivePrompt()
-        .replace('{{CURRENT_DATETIME}}', new Date().toLocaleString())
-        .replace('{{MEMORY_CONTEXT}}', memoryContext);
+        .replace('{{CURRENT_DATETIME}}', getCurrentSpanishDateTimeString())
+        .replace('{{MEMORY_CONTEXT}}', memoryContext) +
+        `\n\nTime handling rule: unless the user explicitly provides another timezone, interpret times as ${SPANISH_TIME_ZONE}.`;
 
     let userContent = userMessage;
     if (fileInfo) {
@@ -1046,7 +1337,7 @@ async function buildHomeTab(userId) {
     }));
     
     const enabledTools = allTools.filter(t => !disabledTools.has(t));
-    const initialOptions = enabledTools.length > 0 
+    const initialOptions = enabledTools.length > 0
         ? enabledTools.map(t => ({ text: { type: 'plain_text', text: t }, value: t }))
         : undefined;
     
@@ -1105,19 +1396,17 @@ async function buildHomeTab(userId) {
                 text: {
                     type: 'mrkdwn',
                     text: '*Enabled Tools*'
+                },
+                accessory: {
+                    type: 'multi_static_select',
+                    action_id: 'tools_multiselect',
+                    placeholder: {
+                        type: 'plain_text',
+                        text: 'Select enabled tools'
+                    },
+                    options: toolOptions,
+                    ...(initialOptions && { initial_options: initialOptions })
                 }
-            },
-            {
-                type: 'actions',
-                block_id: 'tools_checkboxes_block',
-                elements: [
-                    {
-                        type: 'checkboxes',
-                        action_id: 'tools_checkboxes',
-                        options: toolOptions,
-                        ...(initialOptions && { initial_options: initialOptions })
-                    }
-                ]
             },
             {
                 type: 'divider'
@@ -1298,13 +1587,13 @@ app.view('save_prompt_modal', async ({ ack, body, view, client }) => {
 
 
 
-app.action('tools_checkboxes', async ({ ack, body, action, client }) => {
+app.action('tools_multiselect', async ({ ack, body, action, client }) => {
     await ack();
     
     try {
         const allTools = getAllToolNames();
-        const selectedTools = new Set(action.selected_options.map(o => o.value));
-        
+        const selectedTools = new Set((action.selected_options || []).map((option) => option.value));
+
         for (const toolName of allTools) {
             const settingId = `tool-${toolName}`;
             if (selectedTools.has(toolName)) {
@@ -1372,6 +1661,10 @@ cron.schedule('*/2 * * * *', async () => {
     await syncMemoriesToVector();
 });
 
+cron.schedule('* * * * *', async () => {
+    await processPendingReminders();
+});
+
 async function sendDailyRitualMessage() {
     try {
         const greetings = [
@@ -1422,17 +1715,18 @@ cron.schedule('0 20 * * *', sendDailyRitualMessage);
     console.log('Running :3');
 
     await refreshSettings();
-    
-    if (USER_ID) {
+
+    if (START_NOTIFS_CHANNEL_ID) {
         try {
             await app.client.chat.postMessage({
-                channel: USER_ID,
+                channel: START_NOTIFS_CHANNEL_ID,
                 text: 'Bot is up :3'
             });
         } catch (error) {
-            console.error('Failed to send startup message:', error);
+            console.error('Failed to send startup notification message:', error);
         }
     }
     
     await syncMemoriesToVector();
+    await processPendingReminders();
 })();
