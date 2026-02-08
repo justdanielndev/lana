@@ -3,11 +3,71 @@ const crypto = require('crypto');
 
 const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY;
 const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://eu.i.posthog.com';
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const IS_PRODUCTION = NODE_ENV === 'production';
 
 let client = null;
 
 if (POSTHOG_API_KEY) {
-    client = new PostHog(POSTHOG_API_KEY, { host: POSTHOG_HOST });
+    client = new PostHog(POSTHOG_API_KEY, {
+        host: POSTHOG_HOST,
+        enableExceptionAutocapture: IS_PRODUCTION,
+    });
+}
+
+function safelySerialize(value, fallback = '[unserializable]') {
+    try {
+        return JSON.parse(JSON.stringify(value));
+    } catch (_) {
+        return fallback;
+    }
+}
+
+function captureServerLog({
+    distinctId = 'zoebot',
+    level = 'info',
+    message,
+    context,
+}) {
+    if (!client) return;
+
+    const properties = {
+        level,
+        message: typeof message === 'string' ? message : String(message),
+        environment: NODE_ENV,
+    };
+
+    if (context !== undefined) {
+        properties.context = safelySerialize(context);
+    }
+
+    client.capture({
+        distinctId,
+        event: 'server_log',
+        properties,
+    });
+}
+
+function captureServerError(error, context, distinctId = 'zoebot') {
+    if (!client) return;
+
+    if (typeof client.captureException === 'function' && error instanceof Error) {
+        client.captureException(error, distinctId, {
+            environment: NODE_ENV,
+            context: safelySerialize(context),
+        });
+        return;
+    }
+
+    captureServerLog({
+        distinctId,
+        level: 'error',
+        message: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+        context: {
+            ...safelySerialize(context, {}),
+            stack: error instanceof Error ? error.stack : undefined,
+        },
+    });
 }
 
 function captureAIGeneration({
@@ -173,9 +233,12 @@ function shutdownPosthog() {
 }
 
 module.exports = {
+    IS_PRODUCTION,
     captureAIGeneration,
     captureAITrace,
     captureAISpan,
     captureAIEmbedding,
+    captureServerLog,
+    captureServerError,
     shutdownPosthog,
 };

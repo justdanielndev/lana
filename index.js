@@ -7,7 +7,106 @@ const appwrite = require('node-appwrite');
 const { InputFile } = require('node-appwrite/file');
 const cron = require('node-cron');
 const { Index } = require('@upstash/vector');
-const { captureAIGeneration, captureAITrace, captureAISpan, captureAIEmbedding, shutdownPosthog } = require('./utils/posthog');
+const {
+    IS_PRODUCTION,
+    captureAIGeneration,
+    captureAITrace,
+    captureAISpan,
+    captureAIEmbedding,
+    captureServerLog,
+    captureServerError,
+    shutdownPosthog,
+} = require('./utils/posthog');
+
+function serializeLogValue(value) {
+    if (value instanceof Error) {
+        return {
+            name: value.name,
+            message: value.message,
+            stack: value.stack,
+        };
+    }
+
+    if (typeof value === 'string') return value;
+
+    try {
+        return JSON.parse(JSON.stringify(value));
+    } catch (_) {
+        return String(value);
+    }
+}
+
+function formatLogMessage(args) {
+    return args
+        .map((arg) => {
+            if (typeof arg === 'string') return arg;
+            if (arg instanceof Error) return `${arg.name}: ${arg.message}`;
+            try {
+                return JSON.stringify(arg);
+            } catch (_) {
+                return String(arg);
+            }
+        })
+        .join(' ');
+}
+
+if (IS_PRODUCTION) {
+    const rawConsole = {
+        info: console.info.bind(console),
+        warn: console.warn.bind(console),
+        error: console.error.bind(console),
+    };
+
+    console.log = () => {};
+    console.debug = () => {};
+
+    console.info = (...args) => {
+        captureServerLog({
+            level: 'info',
+            message: formatLogMessage(args),
+            context: { args: args.map(serializeLogValue) },
+        });
+    };
+
+    console.warn = (...args) => {
+        const context = { args: args.map(serializeLogValue) };
+        rawConsole.warn(...args);
+        captureServerLog({
+            level: 'warn',
+            message: formatLogMessage(args),
+            context,
+        });
+    };
+
+    console.error = (...args) => {
+        const errorArg = args.find((arg) => arg instanceof Error);
+        const context = { args: args.map(serializeLogValue) };
+        rawConsole.error(...args);
+
+        if (errorArg) {
+            captureServerError(errorArg, {
+                ...context,
+                message: formatLogMessage(args),
+            });
+            return;
+        }
+
+        captureServerLog({
+            level: 'error',
+            message: formatLogMessage(args),
+            context,
+        });
+    };
+
+    process.on('unhandledRejection', (reason) => {
+        const error = reason instanceof Error ? reason : new Error(String(reason));
+        captureServerError(error, { origin: 'unhandledRejection' });
+    });
+
+    process.on('uncaughtException', (error) => {
+        captureServerError(error, { origin: 'uncaughtException' });
+    });
+}
 
 const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
