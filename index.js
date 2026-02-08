@@ -41,8 +41,11 @@ const vectorIndex = new Index({
 const HC_API_KEY = process.env.HC_API_KEY;
 const HC_CHAT_URL = 'https://ai.hackclub.com/proxy/v1/chat/completions';
 const HC_EMBEDDINGS_URL = 'https://ai.hackclub.com/proxy/v1/embeddings';
+const HC_CHAT_MODEL = process.env.HC_CHAT_MODEL || 'google/gemini-3-flash-preview';
 const HACKATIME_API_KEY = process.env.HACKATIME_API_KEY;
 const HACKATIME_BASE_URL = 'https://hackatime.hackclub.com/api/v1';
+const SYSTEM_PROMPT_TEMPLATE_PATH = path.join(__dirname, 'prompts', 'system-prompt.txt');
+const SYSTEM_PROMPT_TEMPLATE = fs.readFileSync(SYSTEM_PROMPT_TEMPLATE_PATH, 'utf8').trim();
 
 let pendingUploads = {};
 let lastSyncTime = null;
@@ -60,142 +63,74 @@ function getRandomRefusal() {
     return REFUSAL_MESSAGES[Math.floor(Math.random() * REFUSAL_MESSAGES.length)];
 }
 
-const AI_TOOLS = [
-    {
-        type: "function",
-        function: {
-            name: "add_memory",
-            description: "Store a piece of information in long-term memory. Use this when the user tells you something about themselves, their preferences, projects, or anything you should remember for future conversations.",
-            parameters: {
-                type: "object",
-                properties: {
-                    content: { type: "string", description: "The information to remember" },
-                    category: { type: "string", description: "Category of the memory, can be anything (e.g., 'preference', 'project', 'fact', 'reminder')" }
-                },
-                required: ["content", "category"]
-            }
+function loadToolsFromDisk() {
+    const toolRoot = path.join(__dirname, 'tools');
+    const folderToExecutionType = {
+        instant: 'instant',
+        async: 'async'
+    };
+
+    const aiTools = [];
+    const instantToolNames = [];
+    const asyncToolNames = [];
+    const toolHandlers = new Map();
+    const seenToolNames = new Set();
+
+    for (const [folderName, executionType] of Object.entries(folderToExecutionType)) {
+        const folderPath = path.join(toolRoot, folderName);
+
+        if (!fs.existsSync(folderPath)) {
+            continue;
         }
-    },
-    {
-        type: "function",
-        function: {
-            name: "send_message",
-            description: "Send a message to the DM channel or to a specific location. By default sends to thread (if in a thread) or as direct message. Use send_to_channel=true to send to the main channel instead.",
-            parameters: {
-                type: "object",
-                properties: {
-                    message: { type: "string", description: "The message to send" },
-                    send_to_channel: { type: "boolean", description: "If true, send to main channel. Otherwise sends to DM/thread" }
-                },
-                required: ["message"]
+
+        const files = fs.readdirSync(folderPath)
+            .filter((fileName) => fileName.endsWith('.js'))
+            .sort();
+
+        for (const fileName of files) {
+            const filePath = path.join(folderPath, fileName);
+            delete require.cache[require.resolve(filePath)];
+            const toolModule = require(filePath);
+            const declaration = toolModule.declaration || toolModule;
+            const toolName = declaration?.function?.name;
+            const run = toolModule.run;
+
+            if (!toolName) {
+                throw new Error(`Tool declaration missing function.name: ${filePath}`);
             }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "react",
-            description: "Add a reaction emoji to a message. Use this to react to the user's message or other messages.",
-            parameters: {
-                type: "object",
-                properties: {
-                    emoji: { type: "string", description: "The emoji name without colons (e.g., 'thumbsup', 'yay', 'real')" },
-                    message_ts: { type: "string", description: "The message timestamp to react to. If not provided, reacts to the current/last message" }
-                },
-                required: ["emoji"]
+            if (typeof run !== 'function') {
+                throw new Error(`Tool module missing run() handler: ${filePath}`);
             }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "search_messages",
-            description: "Search for messages in the chat history. Returns relevant messages matching the query.",
-            parameters: {
-                type: "object",
-                properties: {
-                    query: { type: "string", description: "What to search for in messages" },
-                    limit: { type: "number", description: "Maximum number of results (default 5)" }
-                },
-                required: ["query"]
+            if (seenToolNames.has(toolName)) {
+                throw new Error(`Duplicate tool name "${toolName}" found in ${filePath}`);
             }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "yap",
-            description: "Post a yap (message) to Zoe's yapping channel. Use this when the user wants to share something with their cultists (channel members :3)",
-            parameters: {
-                type: "object",
-                properties: {
-                    message: { type: "string", description: "The message to yap" }
-                },
-                required: ["message"]
-            }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "cdn_upload",
-            description: "Upload a file to the CDN. The user must have attached a file to their message.",
-            parameters: {
-                type: "object",
-                properties: {
-                    file_id: { type: "string", description: "The custom ID to use for the file on CDN, ask the user for this" },
-                    slack_file_url: { type: "string", description: "The Slack file URL to download from" },
-                    original_name: { type: "string", description: "The original filename" }
-                },
-                required: ["file_id", "slack_file_url", "original_name"]
-            }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "cdn_rename",
-            description: "Rename a file on the CDN",
-            parameters: {
-                type: "object",
-                properties: {
-                    original_id: { type: "string", description: "The current file ID on CDN" },
-                    new_id: { type: "string", description: "The new file ID" }
-                },
-                required: ["original_id", "new_id"]
-            }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "cdn_delete",
-            description: "Delete a file from the CDN",
-            parameters: {
-                type: "object",
-                properties: {
-                    file_id: { type: "string", description: "The file ID to delete" }
-                },
-                required: ["file_id"]
-            }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "get_coding_stats",
-            description: "Get your daily coding time stats from HackaTime for a specific date range. Returns project breakdown and daily average.",
-            parameters: {
-                type: "object",
-                properties: {
-                    start_date: { type: "string", description: "Start date in YYYY-MM-DD format (optional)" },
-                    end_date: { type: "string", description: "End date in YYYY-MM-DD format (optional)" }
-                },
-                required: []
+
+            seenToolNames.add(toolName);
+            aiTools.push(declaration);
+            toolHandlers.set(toolName, { run, executionType });
+
+            if (executionType === 'instant') {
+                instantToolNames.push(toolName);
+            } else {
+                asyncToolNames.push(toolName);
             }
         }
     }
-];
+
+    return {
+        aiTools,
+        instantToolNames,
+        asyncToolNames,
+        toolHandlers
+    };
+}
+
+const {
+    aiTools: AI_TOOLS,
+    instantToolNames: INSTANT_TOOLS,
+    asyncToolNames: ASYNC_TOOLS,
+    toolHandlers: TOOL_HANDLERS
+} = loadToolsFromDisk();
 
 async function getCodingStats(startDate = null, endDate = null) {
     try {
@@ -362,187 +297,54 @@ let currentMessageContext = {
     history: []
 };
 
+function getToolDeps() {
+    return {
+        app,
+        appwrite,
+        storage,
+        fs,
+        path,
+        axios,
+        InputFile,
+        rootDir: __dirname,
+        CHANNEL_ID,
+        SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN,
+        APPWRITE_BUCKET_ID,
+        getCodingStats,
+        addMemoryToAppwrite,
+        syncMemoriesToVector
+    };
+}
+
 async function executeImmediateTool(toolName, toolInput, context) {
+    const handler = TOOL_HANDLERS.get(toolName);
+    if (!handler || handler.executionType !== 'instant') {
+        return { success: false, message: `Unknown immediate tool: ${toolName}` };
+    }
+
     try {
-        switch (toolName) {
-            case 'send_message': {
-                try {
-                    const threadTs = context.threadTs || context.messageTs;
-                    const broadcast = toolInput.send_to_channel || false;
-                    let postConfig = {
-                        channel: context.userId,
-                        text: toolInput.message,
-                        thread_ts: threadTs
-                    };
-                    
-                    if (broadcast) {
-                        postConfig.reply_broadcast = true;
-                    }
-                    
-                    const result = await app.client.chat.postMessage(postConfig);
-                    return { success: true, message: "Message sent successfully!" };
-                } catch (error) {
-                    console.error('Failed to send message:', error);
-                    return { success: false, message: `Failed to send message: ${error.message}` };
-                }
-            }
-            
-            case 'react': {
-                const targetTs = toolInput.message_ts || context.messageTs;
-                if (!targetTs) return { success: false, message: "No message to react to" };
-                
-                try {
-                    await app.client.reactions.add({
-                        channel: context.channelId,
-                        name: toolInput.emoji,
-                        timestamp: targetTs
-                    });
-                    return { success: true, message: `Reacted with :${toolInput.emoji}:` };
-                } catch (error) {
-                    console.error('Failed to add reaction:', error);
-                    return { success: false, message: `Failed to react: ${error.message}` };
-                }
-            }
-            
-            case 'search_messages': {
-                const limit = toolInput.limit || 5;
-                const query = toolInput.query.toLowerCase();
-                
-                const results = context.history.filter(msg => 
-                    msg.content.toLowerCase().includes(query)
-                ).slice(0, limit);
-                
-                if (results.length === 0) {
-                    return { success: true, message: `No messages found matching "${toolInput.query}"` };
-                }
-                
-                const formatted = results.map((msg, i) => 
-                    `${i + 1}. [${msg.role}]: ${msg.content.substring(0, 100)}...`
-                ).join('\n');
-                
-                return { success: true, results: formatted };
-            }
-            
-            case 'get_coding_stats': {
-                const stats = await getCodingStats(toolInput.start_date, toolInput.end_date);
-                
-                const topProjects = stats.projects ? stats.projects.slice(0, 5).map(p => 
-                    `• ${p.name}: ${p.text} (${p.percent.toFixed(1)}%)`
-                ).join('\n') : 'No project data available';
-                
-                const message = `Coding Stats\n\n` +
-                    `Total: ${stats.human_readable_total}\n` +
-                    `Daily Avg: ${stats.human_readable_daily_average}\n\n` +
-                    `Top Projects:\n${topProjects}`;
-                
-                return { success: true, message };
-            }
-            
-            default:
-                return { success: false, message: `Unknown immediate tool: ${toolName}` };
-        }
+        return await handler.run({
+            toolInput,
+            messageContext: context,
+            deps: getToolDeps()
+        });
     } catch (error) {
         return { success: false, message: `Error: ${error.message}` };
     }
 }
 
 async function executeToolCall(toolName, toolInput) {
-
-    switch (toolName) {
-        case 'add_memory': {
-            const docId = await addMemoryToAppwrite(toolInput.content, toolInput.category);
-            if (toolInput.category !== 'history') {
-                await syncMemoriesToVector();
-            }
-            return { success: true, message: `Memory saved with ID ${docId}.` };
-        }
-        
-        case 'yap': {
-            await app.client.chat.postMessage({
-                channel: CHANNEL_ID,
-                text: `<!subteam^S09LUMPUBU0|cultists> *New yap! Go read it :tw_knife:*\n\n${toolInput.message}`
-            });
-            
-            await app.client.chat.postMessage({
-                channel: CHANNEL_ID,
-                text: "Pls thread here! :thread: :D",
-                blocks: [
-                    {
-                        type: "section",
-                        text: { type: "mrkdwn", text: "Pls thread here! :thread: :D" }
-                    },
-                    {
-                        type: "actions",
-                        elements: [{
-                            type: "button",
-                            text: { type: "plain_text", text: "Suggest a new yap", emoji: false },
-                            action_id: "reply_button_click",
-                            value: toolInput.message
-                        }]
-                    }
-                ]
-            });
-            return { success: true, message: "Yap posted successfully!" };
-        }
-        
-        case 'cdn_upload': {
-            const localFilePath = path.join(__dirname, 'cache', toolInput.file_id + path.extname(toolInput.original_name));
-            const writer = fs.createWriteStream(localFilePath);
-            
-            const response = await axios({
-                url: toolInput.slack_file_url,
-                method: 'GET',
-                responseType: 'stream',
-                headers: { 'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}` }
-            });
-            response.data.pipe(writer);
-            
-            await new Promise((resolve, reject) => {
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-            });
-
-            const inputFile = InputFile.fromPath(localFilePath, toolInput.original_name);
-            const appwriteFile = await storage.createFile(
-                APPWRITE_BUCKET_ID, 
-                toolInput.file_id, 
-                inputFile, 
-                [appwrite.Permission.read(appwrite.Role.any())]
-            );
-            
-            fs.unlinkSync(localFilePath);
-            
-            const shareFileUrl = `https://cdn.isitzoe.dev/${appwriteFile.$id}`;
-            return { success: true, message: `File uploaded! URL: ${shareFileUrl}` };
-        }
-        
-        case 'cdn_rename': {
-            const file = await storage.getFile(APPWRITE_BUCKET_ID, toolInput.original_id);
-            const fileBuffer = await storage.getFileDownload(APPWRITE_BUCKET_ID, toolInput.original_id);
-            
-            const inputFile = InputFile.fromBuffer(Buffer.from(fileBuffer), file.name);
-            await storage.createFile(
-                APPWRITE_BUCKET_ID, 
-                toolInput.new_id, 
-                inputFile, 
-                [appwrite.Permission.read(appwrite.Role.any())]
-            );
-            
-            await storage.deleteFile(APPWRITE_BUCKET_ID, toolInput.original_id);
-            
-            const shareFileUrl = `https://cdn.isitzoe.dev/${toolInput.new_id}`;
-            return { success: true, message: `File renamed! New URL: ${shareFileUrl}` };
-        }
-        
-        case 'cdn_delete': {
-            await storage.deleteFile(APPWRITE_BUCKET_ID, toolInput.file_id);
-            return { success: true, message: `File ${toolInput.file_id} deleted.` };
-        }
-        
-        default:
-            console.log(`Unknown tool: ${toolName}`);
-            return { success: false, message: `Unknown tool: ${toolName}` };
+    const handler = TOOL_HANDLERS.get(toolName);
+    if (!handler || handler.executionType !== 'async') {
+        console.log(`Unknown tool: ${toolName}`);
+        return { success: false, message: `Unknown tool: ${toolName}` };
     }
+
+    return handler.run({
+        toolInput,
+        messageContext: null,
+        deps: getToolDeps()
+    });
 }
 
 async function queueToolExecution(toolName, toolInput, userId, channelId, threadTs = null) {
@@ -610,7 +412,7 @@ Send a brief, natural response about what happened. Keep it short and use :3 if 
 You're in Slack, so you need to use its markdown if you need to use formatting. Links for example are like <link|text>.`;
     
     const response = await axios.post(HC_CHAT_URL, {
-        model: "google/gemini-3-flash-preview",
+        model: HC_CHAT_MODEL,
         messages: [
             { role: "system", content: "You're Zoe's AI assistant. Respond briefly to tool results." },
             { role: "user", content: prompt }
@@ -687,52 +489,9 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
      
      console.log('Memory context:', memoryContext);
 
-     const systemPrompt = `You are Zoe's personal AI assistant bot on Slack. You're friendly, helpful, and have a cute personality (use :3 and similar emoticons sometimes).
-
-IMPORTANT: To reply to Zoe, you MUST use the send_message tool. Any text you output outside of send_message will be ignored. Always use send_message for your responses.
-
-You have access to long-term memory - information Zoe has shared with you in past conversations. Use this context to provide personalized responses.
-
-You can:
-1. Remember things for Zoe (use add_memory tool for important info)
-2. Send messages (send_message tool - THIS IS HOW YOU REPLY, goes to thread, use send_to_channel=true to broadcast to main chat view too)
-3. React to messages (react tool)
-4. Search message history (search_messages tool)
-5. Post yaps (messages) to Zoe's yapping channel (Zoe needs to provide the exact message to yap, or you can send her the exact text you're planning to yap, for her to approve first)
-6. Manage CDN files (upload, rename, delete)
-7. Get daily coding stats from HackaTime (get_coding_stats tool - shows projects breakdown, total time, and daily average)
-
-About tools:
-- send_message, react, search_messages, get_coding_stats: Execute immediately
-- add_memory, yap, cdn_*: These are queued async operations - tell the user you're queuing them EXCEPT for add_memory which is silent and happens in the background when you find it useful to remember smth. You should NOT tell the user about add_memory usage unless they specifically ask you about it.
-
-When Zoe shares something important about herself, use add_memory to save it.
-
-Do NOT randomly react. At most run one react tool call per conversation, and only if it's really needed.
-
-You can send multiple messages in one response - just call send_message multiple times with different content.
-
-You're in the Hack Club Slack workspace, and as such you can use workspace emojis. There are thousands, though, so you can't know them all. Here are some (which you can use instead of standard emojis):
-- :real: (text showing "real")
-- :heavysob: (crying face)
-- :yesyes: (animated cat nodding)
-- :no-no: (animated cat shaking head)
-- :yay: (animated fox excited)
-- :skulk: (squished skull)
-- :upvote:
-- :downvote:
-- :this: (text showing "this" with an arrow pointing up)
-- :eyes_shaking: (animated eyes shaking)
-- :loll: (animated minion laughing)
-- :same: (text showing "same")
-- :60fps-parrot: (animated dancing parrot)
-- :leeks: (leeks the vegetable as a reference to leaks)
-
-Use slack formatting where appropriate (e.g., *bold*, _italic_, ~strikethrough~, \`code\`, \`\`\`code blocks\`\`\`, <links|with text>, etc).
-
-Don't abuse emojis, but feel free to use them to express emotion and make your messages more fun. If something fails with reacting, no need to notify the user.
-
-The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
+    const systemPrompt = SYSTEM_PROMPT_TEMPLATE
+        .replace('{{CURRENT_DATETIME}}', new Date().toLocaleString())
+        .replace('{{MEMORY_CONTEXT}}', memoryContext);
 
     let userContent = userMessage;
     if (fileInfo) {
@@ -764,7 +523,7 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
     let response;
     try {
         response = await axios.post(HC_CHAT_URL, {
-            model: "google/gemini-3-flash-preview",
+            model: HC_CHAT_MODEL,
             messages: messages,
             tools: AI_TOOLS,
             max_tokens: 2048
@@ -776,7 +535,7 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
         });
     } catch (error) {
         console.error('AI API Error:', error.response?.data || error.message);
-        console.error('Request size:', JSON.stringify({model: "google/gemini-3-flash-preview", messages: messages, tools: AI_TOOLS, max_tokens: 2048}).length, 'bytes');
+        console.error('Request size:', JSON.stringify({model: HC_CHAT_MODEL, messages: messages, tools: AI_TOOLS, max_tokens: 2048}).length, 'bytes');
         throw error;
     }
 
@@ -785,9 +544,6 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
 
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         messages.push(assistantMessage);
-        
-        const immediateTools = ['send_message', 'react', 'search_messages', 'get_coding_stats'];
-        const queuedTools = ['add_memory', 'yap', 'cdn_upload', 'cdn_rename', 'cdn_delete'];
 
         for (const toolCall of assistantMessage.tool_calls) {
             try {
@@ -800,9 +556,9 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
                     usedSendMessage = true;
                 }
                 
-                if (immediateTools.includes(toolCall.function.name)) {
+                if (INSTANT_TOOLS.includes(toolCall.function.name)) {
                      toolResult = await executeImmediateTool(toolCall.function.name, args, currentMessageContext);
-                 } else if (queuedTools.includes(toolCall.function.name)) {
+                 } else if (ASYNC_TOOLS.includes(toolCall.function.name)) {
                      queueToolExecution(toolCall.function.name, args, userId, channelId, threadTs);
                      toolResult = { queued: true, message: `${toolCall.function.name} queued` };
                  } else {
@@ -827,7 +583,7 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
 
         try {
             response = await axios.post(HC_CHAT_URL, {
-                model: "google/gemini-3-flash-preview",
+                model: HC_CHAT_MODEL,
                 messages: messages,
                 tools: AI_TOOLS,
                 max_tokens: 2048
@@ -839,7 +595,7 @@ The current date and time is ${new Date().toLocaleString()}.${memoryContext}`;
             });
         } catch (error) {
             console.error('AI API Error:', error.response?.data || error.message);
-            console.error('Request size:', JSON.stringify({model: "google/gemini-3-flash-preview", messages: messages, tools: AI_TOOLS, max_tokens: 2048}).length, 'bytes');
+            console.error('Request size:', JSON.stringify({model: HC_CHAT_MODEL, messages: messages, tools: AI_TOOLS, max_tokens: 2048}).length, 'bytes');
             throw error;
         }
 
@@ -1210,6 +966,17 @@ cron.schedule('0 20 * * *', sendDailyRitualMessage);
 (async () => {
     await app.start(process.env.PORT || 3000);
     console.log('Running :3');
+
+    if (USER_ID) {
+        try {
+            await app.client.chat.postMessage({
+                channel: USER_ID,
+                text: 'Bot is up :3'
+            });
+        } catch (error) {
+            console.error('Failed to send startup message:', error);
+        }
+    }
     
     await syncMemoriesToVector();
 })();
