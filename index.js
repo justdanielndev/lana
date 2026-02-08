@@ -147,6 +147,8 @@ const HC_EMBEDDINGS_URL = 'https://ai.hackclub.com/proxy/v1/embeddings';
 const DEFAULT_HC_CHAT_MODEL = process.env.HC_CHAT_MODEL || 'google/gemini-3-flash-preview';
 const HACKATIME_API_KEY = process.env.HACKATIME_API_KEY;
 const HACKATIME_BASE_URL = 'https://hackatime.hackclub.com/api/v1';
+const SEARCH_API_KEY = process.env.SEARCH_API_KEY;
+const SEARCH_API_BASE_URL = process.env.SEARCH_API_BASE_URL || 'https://search.hackclub.com/res/v1';
 const SPANISH_TIME_ZONE = 'Europe/Madrid';
 
 
@@ -876,7 +878,9 @@ function getToolDeps() {
         createReminder,
         listReminders,
         editReminder,
-        processPendingReminders
+        processPendingReminders,
+        SEARCH_API_KEY,
+        SEARCH_API_BASE_URL
     };
 }
 
