@@ -7,6 +7,7 @@ const appwrite = require('node-appwrite');
 const { InputFile } = require('node-appwrite/file');
 const cron = require('node-cron');
 const { Index } = require('@upstash/vector');
+const { captureAIGeneration, captureAITrace, captureAISpan, captureAIEmbedding, shutdownPosthog } = require('./utils/posthog');
 
 const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
@@ -573,21 +574,58 @@ async function getCodingStats(startDate = null, endDate = null) {
     }
 }
 
-async function getEmbedding(text) {
-    const response = await axios.post(
-        HC_EMBEDDINGS_URL,
-        {
-            input: text,
-            model: 'openai/text-embedding-3-small'
-        },
-        {
-            headers: {
-                'Authorization': `Bearer ${HC_API_KEY}`,
-                'Content-Type': 'application/json'
+async function getEmbedding(text, { traceId, sessionId, parentId } = {}) {
+    const startTime = Date.now();
+    let isError = false;
+    let errorMsg = null;
+
+    try {
+        const response = await axios.post(
+            HC_EMBEDDINGS_URL,
+            {
+                input: text,
+                model: 'openai/text-embedding-3-small'
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${HC_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
             }
-        }
-    );
-    return response.data.data[0].embedding;
+        );
+
+        const latency = (Date.now() - startTime) / 1000;
+        const usage = response.data.usage;
+
+        captureAIEmbedding({
+            distinctId: USER_ID,
+            traceId,
+            sessionId,
+            spanName: 'getEmbedding',
+            parentId,
+            model: 'openai/text-embedding-3-small',
+            input: text,
+            inputTokens: usage?.prompt_tokens || usage?.total_tokens,
+            latency,
+        });
+
+        return response.data.data[0].embedding;
+    } catch (error) {
+        captureAIEmbedding({
+            distinctId: USER_ID,
+            traceId,
+            sessionId,
+            spanName: 'getEmbedding',
+            parentId,
+            model: 'openai/text-embedding-3-small',
+            input: text,
+            latency: (Date.now() - startTime) / 1000,
+            isError: true,
+            error: error.message,
+            httpStatus: error.response?.status,
+        });
+        throw error;
+    }
 }
 
 async function addMemoryToAppwrite(content, category = 'general') {
@@ -842,12 +880,16 @@ async function processToolResultThroughAI(toolName, toolResult) {
 Send a brief, natural response about what happened. Keep it short and use :3 if appropriate.
 You're in Slack, so you need to use its markdown if you need to use formatting. Links for example are like <link|text>.`;
     
+    const model = getActiveModel();
+    const inputMessages = [
+        { role: "system", content: "You're Zoe's AI assistant. Respond briefly to tool results." },
+        { role: "user", content: prompt }
+    ];
+
+    const startTime = Date.now();
     const response = await axios.post(HC_CHAT_URL, {
-        model: getActiveModel(),
-        messages: [
-            { role: "system", content: "You're Zoe's AI assistant. Respond briefly to tool results." },
-            { role: "user", content: prompt }
-        ],
+        model,
+        messages: inputMessages,
         max_tokens: 256
     }, {
         headers: {
@@ -855,8 +897,23 @@ You're in Slack, so you need to use its markdown if you need to use formatting. 
             'Content-Type': 'application/json'
         }
     });
-    
-    return response.data.choices[0].message.content || `Finished ${toolName}!`;
+    const latency = (Date.now() - startTime) / 1000;
+
+    const usage = response.data.usage;
+    const outputContent = response.data.choices[0].message.content || `Finished ${toolName}!`;
+
+    captureAIGeneration({
+        distinctId: USER_ID,
+        spanName: 'processToolResultThroughAI',
+        model,
+        input: inputMessages,
+        inputTokens: usage?.prompt_tokens,
+        outputChoices: [{ role: 'assistant', content: outputContent }],
+        outputTokens: usage?.completion_tokens,
+        latency,
+    });
+
+    return outputContent;
 }
 
 async function getSlackHistory(channelId, limit = 20, threadTs = null) {
@@ -906,7 +963,12 @@ async function storeConversationHistory(userMessage, assistantResponse) {
     }
 }
 
-async function chat(userMessage, fileInfo = null, channelId = null, userId = null, messageTs = null, threadTs = null) {    
+async function chat(userMessage, fileInfo = null, channelId = null, userId = null, messageTs = null, threadTs = null) {
+    const crypto = require('crypto');
+    const traceId = crypto.randomUUID();
+    const sessionId = threadTs || messageTs || null;
+    const traceStartTime = Date.now();
+
      const memories = await queryMemories(userMessage, 50);
      let memoryContext = "";
      
@@ -955,6 +1017,7 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
     const activeTools = getActiveTools();
     
     let response;
+    let chatStartTime = Date.now();
     try {
         response = await axios.post(HC_CHAT_URL, {
             model: activeModel,
@@ -970,16 +1033,46 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
     } catch (error) {
         console.error('AI API Error:', error.response?.data || error.message);
         console.error('Request size:', JSON.stringify({model: activeModel, messages: messages, tools: activeTools, max_tokens: 2048}).length, 'bytes');
+        captureAIGeneration({
+            distinctId: userId || USER_ID,
+            traceId,
+            sessionId,
+            spanName: 'chat',
+            model: activeModel,
+            input: messages,
+            isError: true,
+            error: error.response?.data || error.message,
+            httpStatus: error.response?.status,
+            tools: activeTools,
+            latency: (Date.now() - chatStartTime) / 1000,
+        });
         throw error;
     }
 
+    let chatLatency = (Date.now() - chatStartTime) / 1000;
+    let usage = response.data.usage;
     let assistantMessage = response.data.choices[0].message;
+
+    captureAIGeneration({
+        distinctId: userId || USER_ID,
+        traceId,
+        sessionId,
+        spanName: 'chat',
+        model: activeModel,
+        input: messages,
+        inputTokens: usage?.prompt_tokens,
+        outputChoices: [assistantMessage],
+        outputTokens: usage?.completion_tokens,
+        latency: chatLatency,
+        tools: activeTools,
+    });
     let usedSendMessage = false;
 
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         messages.push(assistantMessage);
 
         for (const toolCall of assistantMessage.tool_calls) {
+            const toolStartTime = Date.now();
             try {
                 const args = JSON.parse(toolCall.function.arguments);
                 let toolResult;
@@ -1003,6 +1096,19 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
                  }
 
                 console.log(`Tool result:`, toolResult);
+
+                captureAISpan({
+                    distinctId: userId || USER_ID,
+                    traceId,
+                    sessionId,
+                    spanId: toolCall.id,
+                    spanName: toolCall.function.name,
+                    parentId: traceId,
+                    inputState: args,
+                    outputState: toolResult,
+                    latency: (Date.now() - toolStartTime) / 1000,
+                });
+
                 messages.push({
                     role: "tool",
                     tool_call_id: toolCall.id,
@@ -1010,6 +1116,20 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
                 });
             } catch (error) {
                 console.error(`Error processing tool:`, error);
+
+                captureAISpan({
+                    distinctId: userId || USER_ID,
+                    traceId,
+                    sessionId,
+                    spanId: toolCall.id,
+                    spanName: toolCall.function.name,
+                    parentId: traceId,
+                    inputState: toolCall.function.arguments,
+                    latency: (Date.now() - toolStartTime) / 1000,
+                    isError: true,
+                    error: error.message,
+                });
+
                 messages.push({
                     role: "tool",
                     tool_call_id: toolCall.id,
@@ -1018,6 +1138,7 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
             }
         }
 
+        chatStartTime = Date.now();
         try {
             response = await axios.post(HC_CHAT_URL, {
                 model: activeModel,
@@ -1033,17 +1154,54 @@ async function chat(userMessage, fileInfo = null, channelId = null, userId = nul
         } catch (error) {
             console.error('AI API Error:', error.response?.data || error.message);
             console.error('Request size:', JSON.stringify({model: activeModel, messages: messages, tools: activeTools, max_tokens: 2048}).length, 'bytes');
+            captureAIGeneration({
+                distinctId: userId || USER_ID,
+                traceId,
+                sessionId,
+                spanName: 'chat_tool_followup',
+                model: activeModel,
+                input: messages,
+                isError: true,
+                error: error.response?.data || error.message,
+                httpStatus: error.response?.status,
+                tools: activeTools,
+                latency: (Date.now() - chatStartTime) / 1000,
+            });
             throw error;
         }
 
+        chatLatency = (Date.now() - chatStartTime) / 1000;
+        usage = response.data.usage;
         assistantMessage = response.data.choices[0].message;
+
+        captureAIGeneration({
+            distinctId: userId || USER_ID,
+            traceId,
+            sessionId,
+            spanName: 'chat_tool_followup',
+            model: activeModel,
+            input: messages,
+            inputTokens: usage?.prompt_tokens,
+            outputChoices: [assistantMessage],
+            outputTokens: usage?.completion_tokens,
+            latency: chatLatency,
+            tools: activeTools,
+        });
     }
 
-    if (usedSendMessage) {
-        return null;
-    }
-    
-    return assistantMessage.content || "Huh... No response was generated.";
+    const finalOutput = usedSendMessage ? null : (assistantMessage.content || "Huh... No response was generated.");
+
+    captureAITrace({
+        distinctId: userId || USER_ID,
+        traceId,
+        sessionId,
+        spanName: 'chat',
+        inputState: [{ role: 'user', content: userMessage }],
+        outputState: finalOutput ? [{ role: 'assistant', content: finalOutput }] : null,
+        latency: (Date.now() - traceStartTime) / 1000,
+    });
+
+    return finalOutput;
 }
 
 app.message(async ({ message, say }) => {
@@ -1730,3 +1888,13 @@ cron.schedule('0 20 * * *', sendDailyRitualMessage);
     await syncMemoriesToVector();
     await processPendingReminders();
 })();
+
+process.on('SIGTERM', async () => {
+    await shutdownPosthog();
+    process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+    await shutdownPosthog();
+    process.exit(0);
+});
