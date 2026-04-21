@@ -1,0 +1,1260 @@
+{
+  "name": "Chat agent (Lana)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "inputdata"
+            },
+            {
+              "name": "conversationid"
+            },
+            {
+              "name": "inputfrom"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1968,
+        -96
+      ],
+      "id": "a9244f46-26f1-4914-8f21-428713466eca",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[yourprompt]",
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "[yourprompt]",
+          "enableStreaming": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1936,
+        -96
+      ],
+      "id": "3f92741b-72b6-47bf-b78e-f5ef0a76a73c",
+      "name": "AI Agent",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "google/gemini-3-flash-preview"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1744,
+        144
+      ],
+      "id": "de605171-ce00-4f49-90b2-eb217a120eaa",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "YlqXW7odkPDSxhhQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "minimax/minimax-m2.5",
+          "mode": "list",
+          "cachedResultName": "minimax/minimax-m2.5"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1872,
+        144
+      ],
+      "id": "2cdd096f-59a4-4669-89bd-ef4b6b64417c",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "YlqXW7odkPDSxhhQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1576164f-709c-4ca7-9c2f-d3d817bb8958",
+              "leftValue": "={{ $json.inputfrom }}",
+              "rightValue": "task",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1296,
+        -96
+      ],
+      "id": "6dc04cbc-0afc-46e4-96ea-d511fe3eaa2c",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ec539661-4c24-4f18-95f8-9b968f4bc087",
+              "name": "message",
+              "value": "[yourprompt]",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1520,
+        -192
+      ],
+      "id": "21da9a11-0ad1-4fd8-b08b-3bd99992d1f3",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e9b8d95a-a10d-449d-afbf-46c6035c1117",
+              "name": "message",
+              "value": "={{ $('When Executed by Another Workflow').item.json.inputdata }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1520,
+        16
+      ],
+      "id": "fcf25e47-b0b0-4d6e-abac-635991c6ac5f",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "select": "user",
+        "user": {
+          "__rl": true,
+          "value": "[yourslackid]",
+          "mode": "id"
+        },
+        "text": "={{ $json.output }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        2848,
+        112
+      ],
+      "id": "0a496165-4db4-4e9a-b7f0-4f4daf27677e",
+      "name": "Send a message",
+      "webhookId": "66a14ad5-8ba6-4f6c-8455-de422e7227c7",
+      "credentials": {
+        "slackApi": {
+          "id": "3YArWFGGe19gF1M1",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  temp_max: \"{{ $json.content.parseJson()[0].prediccion.dia[0].temperatura.maxima }}\",\ntemp_min: \"{{ $json.content.parseJson()[0].prediccion.dia[0].temperatura.minima }}\"\nsky: {{ $json.content.parseJson()[0].prediccion.dia[0].estadoCielo[2].descripcion }}\nrain: {{ $json.content.parseJson()[0].prediccion.dia[0].probPrecipitacion[0].value }}\n}\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1072,
+        -96
+      ],
+      "id": "9d44fe5f-01b9-42d5-a012-6f098e750eeb",
+      "name": "Edit Fields2"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "1",
+        "contextWindowLength": 12
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryRedisChat",
+      "typeVersion": 1.5,
+      "position": [
+        2000,
+        144
+      ],
+      "id": "caad2ff6-b959-44c8-a818-2b3829c6d7f7",
+      "name": "Redis Chat Memory",
+      "credentials": {
+        "redis": {
+          "id": "ZE1YPJ0hgCON4YE9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "aemetweather"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        848,
+        -96
+      ],
+      "id": "49fc7efd-bca5-427e-b751-8cba4fd7cb2b",
+      "name": "Get row(s)"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "prompt"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -944,
+        -96
+      ],
+      "id": "6612979c-e4f1-4c3d-a9a2-6d95f8966e57",
+      "name": "Get row(s)1",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "64ea5833-d5f0-4eef-81b6-d2b350269346",
+              "name": "response",
+              "value": "={{ $('AI Agent').item.json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2848,
+        -96
+      ],
+      "id": "72ea536e-052f-45cf-b915-e30a1e484161",
+      "name": "Edit Fields3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4c72afd0-c92e-4394-b8e6-590928578ac5",
+              "leftValue": "={{ $('When Executed by Another Workflow').item.json.inputfrom }}",
+              "rightValue": "user (chat in n8n)",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2624,
+        16
+      ],
+      "id": "ab1396f7-4e82-49de-86d5-43417dded6a0",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "mode": "load",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "lana-oai",
+          "mode": "id"
+        },
+        "prompt": "={{ $json.inputdata.slice(0,800) }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        -1520,
+        -192
+      ],
+      "id": "b3af1396-24eb-40a4-96c3-ef49eaaa4b83",
+      "name": "Qdrant Vector Store",
+      "credentials": {
+        "qdrantApi": {
+          "id": "YG57JCyTqfm71imn",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1456,
+        -384
+      ],
+      "id": "5b619b92-db53-4e12-bd2c-fed69bd14cc5",
+      "name": "Edit Fields4",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1168,
+        -112
+      ],
+      "id": "3240d4b0-e53c-4f91-ae10-bcffb18a26a1",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -1744,
+        208
+      ],
+      "id": "fa634d99-8fbc-4ec6-a2e8-cc290aa9e627",
+      "name": "Redis",
+      "credentials": {
+        "redis": {
+          "id": "ZE1YPJ0hgCON4YE9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "load",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "lana-oai",
+          "mode": "id"
+        },
+        "prompt": "={{ $json.toJsonString().slice(0,800) }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        -1520,
+        208
+      ],
+      "id": "58563f7e-5507-44c0-8583-b8cb11a11b1a",
+      "name": "Qdrant Vector Store1",
+      "credentials": {
+        "qdrantApi": {
+          "id": "YG57JCyTqfm71imn",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "mistral-embed-2312",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        -1456,
+        32
+      ],
+      "id": "f2bd2c47-09a6-4eb9-aa37-f9523bd525ed",
+      "name": "Embeddings Mistral Cloud",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "EvEN1q0jCtLD6f3E",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "current-emotion"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -720,
+        -96
+      ],
+      "id": "d5792a61-e90d-45a8-a9e7-4c3e06463bcb",
+      "name": "Get row(s)2"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "tiredness"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        624,
+        -96
+      ],
+      "id": "09759f1f-1aac-4f64-89c9-a21a390a6c6f",
+      "name": "Get row(s)3"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "nQM3MYfoGh3qBNG4",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/nQM3MYfoGh3qBNG4",
+          "cachedResultName": "State updating (Lana)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "weather": "=temp max: {{ $('Edit Fields2').item.json.temp_max }}, temp min: {{ $('Edit Fields2').item.json.temp_min }}, sky: {{ $('Edit Fields2').item.json.sky }}"
+          },
+          "matchingColumns": [
+            "weather"
+          ],
+          "schema": [
+            {
+              "id": "weather",
+              "displayName": "weather",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2624,
+        -192
+      ],
+      "id": "44400450-c875-459e-978b-54cbadb705fd",
+      "name": "Call 'State updating'"
+    },
+    {
+      "parameters": {
+        "description": "[yourprompt]",
+        "workflowId": {
+          "__rl": true,
+          "value": "0UpJUSMKMZYnLoSD",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/0UpJUSMKMZYnLoSD",
+          "cachedResultName": "Places or world actions agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('action', `[yourprompt]`, 'string') }}"
+          },
+          "matchingColumns": [
+            "action"
+          ],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        2128,
+        144
+      ],
+      "id": "c0f5c4d0-e9de-4b33-98e7-6cb69803cbda",
+      "name": "Call 'Places or world actions agent'"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "[yourprompt]",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "lana-oai",
+          "mode": "list",
+          "cachedResultName": "lana-oai"
+        },
+        "topK": 5,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        2256,
+        144
+      ],
+      "id": "4163ee4a-b100-4dd9-8e99-534f43241894",
+      "name": "Qdrant Vector Store2",
+      "credentials": {
+        "qdrantApi": {
+          "id": "YG57JCyTqfm71imn",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "mistral-embed-2312",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        2336,
+        352
+      ],
+      "id": "a3a57725-a329-4083-8138-bdac6342845a",
+      "name": "Embeddings Mistral Cloud1",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "EvEN1q0jCtLD6f3E",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "current-task"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -496,
+        -96
+      ],
+      "id": "31160a8e-06d8-4b0c-848e-3e1326332742",
+      "name": "Get row(s)4"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "current-task"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "content": "Talking to user"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "dataname",
+              "displayName": "dataname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -272,
+        -96
+      ],
+      "id": "0176a31a-93b0-4f60-8194-0720325bde74",
+      "name": "Update row(s)"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "current-location"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -48,
+        -96
+      ],
+      "id": "02536fd6-fe6f-4665-884c-24ee2483d3e3",
+      "name": "Get row(s)5"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "available-inventory"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        -96
+      ],
+      "id": "fce6a0e1-b497-4bf8-86ec-d3166d707489",
+      "name": "Get row(s)6"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "gOvleTMrYJ3p7nhw",
+          "mode": "list",
+          "cachedResultName": "lana-actions-log",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/gOvleTMrYJ3p7nhw"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "createdAt",
+              "condition": "gte",
+              "keyValue": "={{ $now.startOf(\"day\") }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        176,
+        -96
+      ],
+      "id": "af189f1c-be80-4f96-9752-6a7143f4dbf5",
+      "name": "Get row(s)7",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "eventName": "Chat interaction finished",
+        "distinctId": "Lana",
+        "additionalFields": {
+          "propertiesUi": {
+            "propertyValues": [
+              {
+                "key": "input",
+                "value": "={{ $('When Executed by Another Workflow').item.json.inputdata }}"
+              },
+              {
+                "key": "output",
+                "value": "={{ $('AI Agent').item.json.output }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.postHog",
+      "typeVersion": 1,
+      "position": [
+        2448,
+        -448
+      ],
+      "id": "98ca9da7-55a7-45b5-8375-f840e85a5708",
+      "name": "Create an event",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postHogApi": {
+          "id": "uE1DlhWBT6cszbku",
+          "name": "PostHog account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields4",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Redis",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Qdrant Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Call 'State updating'",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields2": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)1": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        []
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Vector Store": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Edit Fields4": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Vector Store1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Vector Store1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Embeddings Mistral Cloud": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Qdrant Vector Store1",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)2": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)3": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields3": {
+      "main": [
+        []
+      ]
+    },
+    "Call 'Places or world actions agent'": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Vector Store2": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Mistral Cloud1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant Vector Store2",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row(s)": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)5": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)6": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)4": {
+      "main": [
+        [
+          {
+            "node": "Update row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)7": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "24b02145-cd63-4756-9941-6a802423b748",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a778a0d94b3958961fe34906fd90006f863d59efcaf8ca586dc3f0d6b0a34eb"
+  },
+  "id": "og9qOrENCmtMcOSZ",
+  "tags": [
+    {
+      "updatedAt": "2026-03-21T12:03:52.825Z",
+      "createdAt": "2026-03-21T12:03:52.825Z",
+      "id": "24LSzFxysu3aJmEV",
+      "name": "lana"
+    }
+  ]
+}

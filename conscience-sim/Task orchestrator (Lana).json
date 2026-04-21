@@ -1,0 +1,335 @@
+{
+  "name": "Task orchestrator (Lana)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "datainput"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "38051743-65a3-4c85-a4a3-7a9d55470597",
+      "name": "When Executed by Another Workflow",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[yourprompt]",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        384,
+        -32
+      ],
+      "id": "338cdf58-4b26-4848-a277-d9a615d48770",
+      "name": "AI Agent",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "google/gemini-3-flash-preview"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        384,
+        192
+      ],
+      "id": "103269b7-fb3c-4df0-984a-67be21709b5b",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "YlqXW7odkPDSxhhQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "nWPcQTdUIw4SeHnY",
+          "mode": "list",
+          "cachedResultName": "agent-tasks",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/nWPcQTdUIw4SeHnY"
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        192,
+        -16
+      ],
+      "id": "daf80880-7827-4df7-9c03-d30e19efb73c",
+      "name": "Get row(s)"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ $json.output }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        704,
+        -32
+      ],
+      "id": "91e0f1d3-9b9c-4c33-aad4-f7a4ba3f8e18",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2a275c16-2c29-4bb9-917b-9a1aa4774f7f",
+              "leftValue": "={{ $json.distribute }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        -16
+      ],
+      "id": "78107c4f-637f-43ae-bf06-ba12835acae1",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "93aee187-5a35-4404-b8ef-ca2f720534bd",
+              "leftValue": "={{ $('Edit Fields').item.json.model }}",
+              "rightValue": "agent",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1104,
+        -112
+      ],
+      "id": "778681d5-59be-48ae-808b-5993aaae0915",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "og9qOrENCmtMcOSZ",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/og9qOrENCmtMcOSZ",
+          "cachedResultName": "Chat agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "conversationid": "1",
+            "inputfrom": "task",
+            "inputdata": "={{ $('Edit Fields').item.json.message }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "inputdata",
+              "displayName": "inputdata",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "conversationid",
+              "displayName": "conversationid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "inputfrom",
+              "displayName": "inputfrom",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1344,
+        0
+      ],
+      "id": "35996682-81ca-46d4-8285-5ad0aa0bfc2a",
+      "name": "Call 'Chat agent'"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Call 'Chat agent'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "1927565e-7547-4d4e-982b-32f807a98caa",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a778a0d94b3958961fe34906fd90006f863d59efcaf8ca586dc3f0d6b0a34eb"
+  },
+  "id": "HrMlXq5vwEDCd4Sm",
+  "tags": [
+    {
+      "updatedAt": "2026-03-21T12:03:52.825Z",
+      "createdAt": "2026-03-21T12:03:52.825Z",
+      "id": "24LSzFxysu3aJmEV",
+      "name": "lana"
+    }
+  ]
+}

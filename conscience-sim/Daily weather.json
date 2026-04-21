@@ -1,0 +1,306 @@
+{
+  "name": "Daily weather",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 4
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "6215e97c-c02e-440e-82a9-b3cce6f81866",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.datos }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        400,
+        -16
+      ],
+      "id": "2c9a1aab-d93a-4d05-845e-129ef7470f24",
+      "name": "Get the specific data",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "[yourapiurl]",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        192,
+        0
+      ],
+      "id": "7a03c528-6a1d-4a42-aba5-6fb810c4b000",
+      "name": "Get valencia url",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SNdA3pbMoUi0eAb3",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "[yourapiurl]",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        592,
+        0
+      ],
+      "id": "cf4bda7c-c8e1-4d77-9542-89db3807822e",
+      "name": "Open meteo",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "[yourapiurl]",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        800,
+        0
+      ],
+      "id": "a1996b0c-6199-4355-a63a-7699a928acb8",
+      "name": "HTTP Request",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[yourprompt]",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1040,
+        64
+      ],
+      "id": "541b42d9-ad5f-4171-9345-883a26cdbeeb",
+      "name": "AI Agent",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "google/gemini-3-flash-preview"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1040,
+        224
+      ],
+      "id": "a83802e9-66a4-47d1-9632-7603f8400e93",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "YlqXW7odkPDSxhhQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bb6cd883-2dcb-4d71-8ad3-d4316a1087ed",
+              "name": "output",
+              "value": "={{ $json.output }}",
+              "type": "object"
+            },
+            {
+              "id": "a0e5c161-6c87-4797-b96e-6576c5a5fe37",
+              "name": "",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1360,
+        64
+      ],
+      "id": "1a29884d-a578-4b14-9e1b-d5eb0570f365",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "[yourslackid]",
+          "mode": "id"
+        },
+        "text": "=Hiii <@[yourslackid]> (and co), here's today's weather curated by the one and only me! :3\n\n{{ $json.output.usermessage }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1552,
+        -48
+      ],
+      "id": "e8172e19-c8b9-4a41-8730-e1fec932c1af",
+      "name": "Send a message",
+      "webhookId": "f72cb3c0-fd31-4f17-a5e4-7b999b000d61",
+      "credentials": {
+        "slackApi": {
+          "id": "3YArWFGGe19gF1M1",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get valencia url",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get the specific data": {
+      "main": [
+        [
+          {
+            "node": "Open meteo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get valencia url": {
+      "main": [
+        [
+          {
+            "node": "Get the specific data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Open meteo": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedPerExecution": 1
+  },
+  "versionId": "39d7c196-5b4f-43f4-9530-6f193a36319d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a778a0d94b3958961fe34906fd90006f863d59efcaf8ca586dc3f0d6b0a34eb"
+  },
+  "id": "o3RXqQmokSF1ZdrD",
+  "tags": [
+    {
+      "updatedAt": "2026-03-21T12:03:59.385Z",
+      "createdAt": "2026-03-21T12:03:59.385Z",
+      "id": "k2biWk2SNCxJ2LWk",
+      "name": "automation"
+    }
+  ]
+}

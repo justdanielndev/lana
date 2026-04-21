@@ -5,6 +5,10 @@
   "main": "index.js",
   "scripts": {
     "dev": "NODE_ENV=development node index.js",
+    "web:install": "pnpm --dir web install",
+    "web:dev": "pnpm --dir web dev",
+    "web:build": "pnpm --dir web build",
+    "web:start": "pnpm --dir web start",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "NODE_ENV=production node index.js"
   },

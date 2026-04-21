@@ -1,0 +1,726 @@
+{
+  "name": "Wake Up",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "dreams"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -432,
+        -208
+      ],
+      "id": "4165f4de-3957-492e-8eab-18aa3f77c48e",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[yourprompt]",
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "[yourprompt]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        880,
+        -208
+      ],
+      "id": "6032e2de-b1f7-4ddf-b8a8-5f27733427bc",
+      "name": "AI Agent",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "prompt"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        16,
+        -208
+      ],
+      "id": "85443196-4eb5-42b8-ac0b-80d473aea08d",
+      "name": "Get row(s)"
+    },
+    {
+      "parameters": {
+        "mode": "load",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "lana-oai",
+          "mode": "id"
+        },
+        "prompt": "={{ $('When Executed by Another Workflow').item.json.dreams.slice(0,800) }}, dream",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        -64
+      ],
+      "id": "33619b87-7a9b-4bcc-a2c5-aeec40e784fc",
+      "name": "Qdrant Vector Store",
+      "credentials": {
+        "qdrantApi": {
+          "id": "YG57JCyTqfm71imn",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "google/gemini-3-flash-preview"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        816,
+        32
+      ],
+      "id": "280c4492-f2c9-48a8-bf6b-81a03009738a",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "YlqXW7odkPDSxhhQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        944,
+        32
+      ],
+      "id": "0db10ced-1715-4d84-a8d2-d6da807ed088",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "W5iDcOpEY3u5RlOU",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        304,
+        -352
+      ],
+      "id": "301f4185-9e52-4a0c-8b33-9c10871d7412",
+      "name": "Edit Fields",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        592,
+        -208
+      ],
+      "id": "2779c8ac-5eca-460b-80cb-e3081d012d8d",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "description": "[yourprompt]",
+        "workflowId": {
+          "__rl": true,
+          "value": "hLZDglI48z7QVzJH",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/hLZDglI48z7QVzJH",
+          "cachedResultName": "Write a memo"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "memocontent": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('memocontent', `[yourprompt]`, 'string') }}",
+            "tags": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('tags', `[yourprompt]`, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "memocontent",
+              "displayName": "memocontent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1072,
+        32
+      ],
+      "id": "21509740-0c3d-4bcd-a56b-43e6bd4854b2",
+      "name": "Call 'Write a memo'"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f4a441e0-8a3f-475d-be69-9ea839f5da12",
+              "name": "dreams",
+              "value": "={{ $json.dreams.split(\"[END DREAM]\")[0] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -208,
+        -208
+      ],
+      "id": "e3a1b318-f8d9-4e42-b614-65ed4cbcfde0",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "current-emotion"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "content": "={{ $json.output.parseJson().emotion }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "dataname",
+              "displayName": "dataname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1280,
+        -208
+      ],
+      "id": "be390d36-c600-4a02-9827-536d919ac621",
+      "name": "Update row(s)"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "tiredness"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "content": "={{ $('AI Agent').item.json.output.parseJson().tiredness }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "dataname",
+              "displayName": "dataname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1504,
+        -112
+      ],
+      "id": "df36512b-79d8-4fb8-ba40-4fbd5f3a601f",
+      "name": "Update row(s)1"
+    },
+    {
+      "parameters": {
+        "model": "mistral-embed-2312",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        320,
+        176
+      ],
+      "id": "ebba072b-2c2b-4ede-bd9b-b9e2b82948eb",
+      "name": "Embeddings Mistral Cloud",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "EvEN1q0jCtLD6f3E",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "eventName": "Woke up",
+        "distinctId": "Lana",
+        "additionalFields": {
+          "propertiesUi": {
+            "propertyValues": [
+              {
+                "key": "output",
+                "value": "={{ $('AI Agent').item.json.output }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.postHog",
+      "typeVersion": 1,
+      "position": [
+        1504,
+        -304
+      ],
+      "id": "0986c5b0-0495-4006-883e-ffcc17afb94e",
+      "name": "Create an event",
+      "executeOnce": false,
+      "alwaysOutputData": true,
+      "credentials": {
+        "postHogApi": {
+          "id": "uE1DlhWBT6cszbku",
+          "name": "PostHog account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "gOvleTMrYJ3p7nhw",
+          "mode": "list",
+          "cachedResultName": "lana-actions-log",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/gOvleTMrYJ3p7nhw"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ $now.toLocaleString() }}",
+            "action": "=Woke up. Lana's thoughts after waking up: {{ $('AI Agent').item.json.output }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1728,
+        -112
+      ],
+      "id": "61747fc4-464a-465a-a359-3eb92c21557c",
+      "name": "Insert row"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "hunger"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "content": "30"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "dataname",
+              "displayName": "dataname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1936,
+        -112
+      ],
+      "id": "13d6ea8e-b690-4b5b-a35c-ee1ad47d3e0f",
+      "name": "Update row(s)2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Vector Store": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Write a memo'": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Update row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row(s)": {
+      "main": [
+        [
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update row(s)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Mistral Cloud": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event": {
+      "main": [
+        []
+      ]
+    },
+    "Update row(s)1": {
+      "main": [
+        [
+          {
+            "node": "Insert row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert row": {
+      "main": [
+        [
+          {
+            "node": "Update row(s)2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "4d345da6-8292-4451-aeb6-c2209e94b6f8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a778a0d94b3958961fe34906fd90006f863d59efcaf8ca586dc3f0d6b0a34eb"
+  },
+  "id": "gDliXiMbMqHwMqSL",
+  "tags": [
+    {
+      "updatedAt": "2026-03-21T12:03:52.825Z",
+      "createdAt": "2026-03-21T12:03:52.825Z",
+      "id": "24LSzFxysu3aJmEV",
+      "name": "lana"
+    },
+    {
+      "updatedAt": "2026-03-21T20:05:57.934Z",
+      "createdAt": "2026-03-21T20:05:57.934Z",
+      "id": "83QlnQ6OaUK2Z7XX",
+      "name": "humanity"
+    }
+  ]
+}

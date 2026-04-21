@@ -1,0 +1,131 @@
+{
+  "name": "Daily Ritual Message",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 20 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule 20:00 UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hackatime.hackclub.com/api/v1/users/my/stats",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "features",
+              "value": "projects"
+            },
+            {
+              "name": "start_date",
+              "value": "={{ $now.toFormat('yyyy-MM-dd') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "hackatime-http",
+      "name": "HackaTime Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_HACKATIME_CRED_ID",
+          "name": "HackaTime Bearer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const greetings = [\n  \"Hey bestie, how's the grind going?\",\n  \"What've you cooked today??\",\n  \"Tell me you've been productive 👀\",\n  \"Spill the tea on what you've built :0\",\n  \"What's the vibe on today's work?\",\n];\nconst closings = [\n  \"Go share it on a yap pls :3\",\n  \"Drop a yap about it!! :D\",\n  \"Yap about your wins fr fr :3\",\n  \"Let the cultists know what's up :tw_knife:\",\n  \"Time to flex on the channel :neocat_cool:\",\n];\nconst greeting = greetings[Math.floor(Math.random() * greetings.length)];\nconst closing  = closings[Math.floor(Math.random() * closings.length)];\n\nconst data = $input.first().json.data || {};\nconst projects = Array.isArray(data.projects) ? data.projects : [];\nlet statsText = '';\nif (projects.length > 0) {\n  const top = projects.slice(0, 3)\n    .map(p => `${p.name} (${p.hours}h ${p.minutes}m)`)\n    .join('\\n • ');\n  statsText = `\\n_Today you've worked on:_\\n • ${top}`;\n}\n\nconst userId  = $env.USER_ID;\nconst channel = $env.CHANNEL_ID;\nconst text    = `<@${userId}> ${greeting}${statsText}\\n${closing}`;\n\nreturn [{ json: { channel, text } }];\n"
+      },
+      "id": "build-message",
+      "name": "Build Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.channel }}",
+          "mode": "id"
+        },
+        "text": "={{ $json.text }}",
+        "otherOptions": {}
+      },
+      "id": "slack-post",
+      "name": "Post to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [960, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_WITH_SLACK_CRED_ID",
+          "name": "Slack Bot Token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule 20:00 UTC": {
+      "main": [
+        [
+          {
+            "node": "HackaTime Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HackaTime Stats": {
+      "main": [
+        [
+          {
+            "node": "Build Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Message": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC"
+  },
+  "pinData": {},
+  "meta": {}
+}

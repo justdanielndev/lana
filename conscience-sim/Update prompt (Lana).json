@@ -1,0 +1,208 @@
+{
+  "name": "Update prompt (Lana)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "newprompt"
+            },
+            {
+              "name": "oldprompt"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5a067e9f-aa40-428f-891c-3348af82d915",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "[yourslackid]"
+        },
+        "text": "=Heya, Lana updated their prompt to:\n{{ $json.newprompt }}\n---\nThe prompt was originally:\n{{ $json.oldprompt }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        240,
+        0
+      ],
+      "id": "56bcf417-af9b-45c3-a96a-2729c3c2beb5",
+      "name": "Send a message",
+      "webhookId": "d3b86ba3-66d6-46b7-b1bc-6d702022cac0",
+      "credentials": {
+        "slackApi": {
+          "id": "3YArWFGGe19gF1M1",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "prompt"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "content": "={{ $('When Executed by Another Workflow').item.json.newprompt }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "dataname",
+              "displayName": "dataname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        704,
+        0
+      ],
+      "id": "8384a8d4-6498-4ef6-b389-a399fa00432c",
+      "name": "Update row(s)"
+    },
+    {
+      "parameters": {
+        "eventName": "Prompt updated",
+        "distinctId": "Lana",
+        "additionalFields": {
+          "propertiesUi": {
+            "propertyValues": [
+              {
+                "key": "start-prompt",
+                "value": "={{ $('When Executed by Another Workflow').item.json.oldprompt }}"
+              },
+              {
+                "key": "updated-prompt",
+                "value": "={{ $('When Executed by Another Workflow').item.json.newprompt }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.postHog",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "c3c0a2c7-9979-44cd-a585-a821e4e20430",
+      "name": "Create an event",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postHogApi": {
+          "id": "uE1DlhWBT6cszbku",
+          "name": "PostHog account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event": {
+      "main": [
+        [
+          {
+            "node": "Update row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "04af3526-71dc-40b1-8bb2-cf6a40e43fb8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a778a0d94b3958961fe34906fd90006f863d59efcaf8ca586dc3f0d6b0a34eb"
+  },
+  "id": "gkc91X1NHsjwZdhP",
+  "tags": [
+    {
+      "updatedAt": "2026-03-21T12:03:52.825Z",
+      "createdAt": "2026-03-21T12:03:52.825Z",
+      "id": "24LSzFxysu3aJmEV",
+      "name": "lana"
+    }
+  ]
+}

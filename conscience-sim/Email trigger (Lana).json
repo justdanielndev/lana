@@ -1,0 +1,283 @@
+{
+  "name": "Email trigger (Lana)",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "715cf6dd-3431-47e3-a01d-c5c3905a8e0a",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "Jqo9YPpJONnMqFUW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8b8778bc-4c41-4cac-97ec-2de1777e9aca",
+              "name": "snippet",
+              "value": "={{ $json.bodyPreview }}",
+              "type": "string"
+            },
+            {
+              "id": "24a1f0c4-e442-48e5-9225-4c4abfde9b9a",
+              "name": "From",
+              "value": "={{ $json.from }}",
+              "type": "string"
+            },
+            {
+              "id": "1abe07ab-41ff-4f50-9dd3-bfb137aa3cdb",
+              "name": "Subject",
+              "value": "={{ $json.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "17a64e61-7436-4263-b6e6-e56b0dcafeca",
+              "name": "To",
+              "value": "={{ $json.to }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        -160
+      ],
+      "id": "8aa89361-9d36-412c-9b5c-18b9df178628",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -192
+      ],
+      "id": "19c33a75-678e-43ce-9a07-dab1c76640c5",
+      "name": "[youremail1]",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "fJRUf3DLmTXax7ti",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -400
+      ],
+      "id": "176324b6-fa5b-4cec-b9a3-13d0c5f99a3d",
+      "name": "[youremail2]",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "7iCArfBxeZXzUobm",
+          "name": "Microsoft Outlook account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        -624
+      ],
+      "id": "1ac8f5cc-d9a2-4acd-adc4-083eceaa68a6",
+      "name": "[youremail3]",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "6e4nEzwDWRvNzUzW",
+          "name": "Microsoft Outlook account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "HrMlXq5vwEDCd4Sm",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/HrMlXq5vwEDCd4Sm",
+          "cachedResultName": "Task orchestrator"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "datainput": "[yourprompt]"
+          },
+          "matchingColumns": [
+            "datainput"
+          ],
+          "schema": [
+            {
+              "id": "datainput",
+              "displayName": "datainput",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        608,
+        -16
+      ],
+      "id": "fcc7d8f1-577d-4809-a315-efe8ea2cc265",
+      "name": "Call 'Task orchestrator'"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Call 'Task orchestrator'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Call 'Task orchestrator'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "[youremail1]": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "[youremail2]": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "[youremail3]": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedPerExecution": 1
+  },
+  "versionId": "46b6e1df-fda8-42e7-8dfe-9e990049bfda",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a778a0d94b3958961fe34906fd90006f863d59efcaf8ca586dc3f0d6b0a34eb"
+  },
+  "id": "ilngQQglKl4ttzuZ",
+  "tags": [
+    {
+      "updatedAt": "2026-03-21T12:08:09.745Z",
+      "createdAt": "2026-03-21T12:08:09.745Z",
+      "id": "ozUTLHRAb5LFGwZv",
+      "name": "task trigger"
+    },
+    {
+      "updatedAt": "2026-03-21T12:03:52.825Z",
+      "createdAt": "2026-03-21T12:03:52.825Z",
+      "id": "24LSzFxysu3aJmEV",
+      "name": "lana"
+    }
+  ]
+}

@@ -1,0 +1,272 @@
+{
+  "name": "Update self",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "task"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -128,
+        0
+      ],
+      "id": "2a3613d0-af51-43c4-89f2-f37fabd7e34d",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryManager",
+      "typeVersion": 1.1,
+      "position": [
+        272,
+        0
+      ],
+      "id": "9dd5bd11-2526-4c4a-9b30-98673121be42",
+      "name": "Chat Memory Manager"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "1",
+        "contextWindowLength": 12
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryRedisChat",
+      "typeVersion": 1.5,
+      "position": [
+        384,
+        304
+      ],
+      "id": "34a6f57f-429d-4e34-8372-898d1c5a01fd",
+      "name": "Redis Chat Memory",
+      "credentials": {
+        "redis": {
+          "id": "ZE1YPJ0hgCON4YE9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[yourprompt]",
+        "options": {
+          "systemMessage": "[yourprompt]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        576,
+        0
+      ],
+      "id": "5d8a2dac-991d-4d29-bcb7-ebb28d802056",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "google/gemini-3-flash-preview"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        544,
+        208
+      ],
+      "id": "fb32ad3d-18f6-4a84-994f-760e9d73eae1",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "YlqXW7odkPDSxhhQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "[yourprompt]",
+        "workflowId": {
+          "__rl": true,
+          "value": "gkc91X1NHsjwZdhP",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/gkc91X1NHsjwZdhP",
+          "cachedResultName": "Update prompt"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "newprompt": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('newprompt', `[yourprompt]`, 'string') }}",
+            "oldprompt": "={{ $('Get row(s)1').item.json.content }}"
+          },
+          "matchingColumns": [
+            "newprompt"
+          ],
+          "schema": [
+            {
+              "id": "newprompt",
+              "displayName": "newprompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "oldprompt",
+              "displayName": "oldprompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1024,
+        208
+      ],
+      "id": "a356bd78-db0c-4421-b363-61d80f9e837a",
+      "name": "Call 'Update prompt'"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "prompt"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        96,
+        128
+      ],
+      "id": "07cdef5e-9f8b-4690-b815-4a3fcca88622",
+      "name": "Get row(s)1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Chat Memory Manager",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Memory Manager": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Update prompt'": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)1": {
+      "main": [
+        [
+          {
+            "node": "Chat Memory Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "c4e95f09-35a4-4b54-8eb4-068bdf0179b9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a778a0d94b3958961fe34906fd90006f863d59efcaf8ca586dc3f0d6b0a34eb"
+  },
+  "id": "pPtzYEaK5ThAjtLU",
+  "tags": [
+    {
+      "updatedAt": "2026-03-21T12:02:48.263Z",
+      "createdAt": "2026-03-21T12:02:48.263Z",
+      "id": "woYDupKE5erS0E4f",
+      "name": "tool"
+    }
+  ]
+}

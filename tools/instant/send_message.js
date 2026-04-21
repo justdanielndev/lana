@@ -15,12 +15,24 @@ const declaration = {
 };
 
 async function run({ toolInput, messageContext, deps }) {
+    if (messageContext?.source === 'web') {
+        return {
+            success: true,
+            directMessage: toolInput.message,
+            message: "Message sent to web conversation."
+        };
+    }
+
     const threadTs = messageContext.threadTs || messageContext.messageTs;
     const broadcast = toolInput.send_to_channel || false;
+    const targetChannel = messageContext.channelId || messageContext.userId;
+    if (!targetChannel) {
+        return { success: false, message: 'No Slack channel available for send_message.' };
+    }
     const postConfig = {
-        channel: messageContext.userId,
+        channel: targetChannel,
         text: toolInput.message,
-        thread_ts: threadTs
+        thread_ts: threadTs ? String(threadTs) : undefined
     };
 
     if (broadcast) {

@@ -1,0 +1,185 @@
+{
+  "name": "Lana chat n8n",
+  "nodes": [
+    {
+      "parameters": {
+        "availableInChat": true,
+        "agentIcon": {
+          "type": "icon",
+          "value": "waypoints"
+        },
+        "agentName": "Lana",
+        "options": {
+          "responseMode": "responseNodes"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -144,
+        0
+      ],
+      "id": "19223aac-0f51-4006-b058-5ef9e3128375",
+      "name": "When chat message received",
+      "webhookId": "d10b6673-4af8-4ad0-925f-b18a423370b6"
+    },
+    {
+      "parameters": {
+        "message": "={{ $json.response }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1.2,
+      "position": [
+        352,
+        0
+      ],
+      "id": "1f5136a8-ddc2-4753-bc8a-0ed3397b74c1",
+      "name": "Chat",
+      "webhookId": "51985bb2-f6d9-49bd-a6dc-1374ea451e23"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "og9qOrENCmtMcOSZ",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/og9qOrENCmtMcOSZ",
+          "cachedResultName": "Chat agent (Lana)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "conversationid": "1",
+            "inputfrom": "user (chat in n8n)",
+            "inputdata": "={{ $json.chatInput }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "inputdata",
+              "displayName": "inputdata",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "conversationid",
+              "displayName": "conversationid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "inputfrom",
+              "displayName": "inputfrom",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        64,
+        0
+      ],
+      "id": "fa10ed9c-47f9-4ee7-87d8-5168f23bde43",
+      "name": "Call 'Chat agent'"
+    },
+    {
+      "parameters": {
+        "eventName": "User message",
+        "distinctId": "Lana",
+        "additionalFields": {
+          "propertiesUi": {
+            "propertyValues": [
+              {
+                "key": "content",
+                "value": "={{ $json.chatInput }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.postHog",
+      "typeVersion": 1,
+      "position": [
+        64,
+        -160
+      ],
+      "id": "f3bff82e-d134-43a4-8115-0936bf3e18b7",
+      "name": "Create an event",
+      "credentials": {
+        "postHogApi": {
+          "id": "uE1DlhWBT6cszbku",
+          "name": "PostHog account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Call 'Chat agent'",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Chat agent'": {
+      "main": [
+        [
+          {
+            "node": "Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "4a04d3ab-bc48-4dbd-92de-12e407961ea5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a778a0d94b3958961fe34906fd90006f863d59efcaf8ca586dc3f0d6b0a34eb"
+  },
+  "id": "F5KxI1168YUZhc9i",
+  "tags": [
+    {
+      "updatedAt": "2026-03-21T12:03:52.825Z",
+      "createdAt": "2026-03-21T12:03:52.825Z",
+      "id": "24LSzFxysu3aJmEV",
+      "name": "lana"
+    }
+  ]
+}

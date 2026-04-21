@@ -1,0 +1,1207 @@
+{
+  "name": "NREM",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 23
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -496,
+        -656
+      ],
+      "id": "1caf206b-b3c4-4d72-a754-1a924fd30602",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "prompt"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1424,
+        -656
+      ],
+      "id": "53a297bb-fdc8-41b3-b50e-32ce47cd92c0",
+      "name": "Get row(s)"
+    },
+    {
+      "parameters": {
+        "operation": "keys",
+        "keyPattern": "1"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        -656
+      ],
+      "id": "51ed5838-f628-4e70-8a3e-4d01bf842342",
+      "name": "Redis",
+      "credentials": {
+        "redis": {
+          "id": "ZE1YPJ0hgCON4YE9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[yourprompt]",
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "[yourprompt]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1872,
+        -656
+      ],
+      "id": "fe645140-64fc-4e86-b96e-e2d17a27075d",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "google/gemini-3-flash-preview"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1888,
+        -432
+      ],
+      "id": "ced2bc70-871e-4766-8fbc-f67082714428",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "YlqXW7odkPDSxhhQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        -432
+      ],
+      "id": "f7f30720-08d2-4c3f-8705-e2c5e2958bff",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "W5iDcOpEY3u5RlOU",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[yourprompt]",
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "[yourprompt]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2288,
+        -656
+      ],
+      "id": "fe5a5cef-8efc-473e-be9a-b7bd8c17719e",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "google/gemini-3-flash-preview"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2224,
+        -432
+      ],
+      "id": "e83b5c0d-bba7-4294-97a1-dd3e75501fe0",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "YlqXW7odkPDSxhhQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2352,
+        -432
+      ],
+      "id": "3e6306ad-4651-4859-91a0-3342b60ac71d",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "W5iDcOpEY3u5RlOU",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "[yourprompt]",
+        "workflowId": {
+          "__rl": true,
+          "value": "gkc91X1NHsjwZdhP",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/gkc91X1NHsjwZdhP",
+          "cachedResultName": "Update prompt"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "oldprompt": "={{ $('Get row(s)').item.json.content }}",
+            "newprompt": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('newprompt', `[yourprompt]`, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "newprompt",
+              "displayName": "newprompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "oldprompt",
+              "displayName": "oldprompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        2480,
+        -432
+      ],
+      "id": "578993ea-bd1e-475b-ad95-1c82cf3bdfc8",
+      "name": "Call 'Update prompt'"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "abi0hCYz5HEWqrmP",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/abi0hCYz5HEWqrmP",
+          "cachedResultName": "REM 1"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "nremdata": "={{ $json.output }}"
+          },
+          "matchingColumns": [
+            "nremdata"
+          ],
+          "schema": [
+            {
+              "id": "nremdata",
+              "displayName": "nremdata",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2688,
+        -928
+      ],
+      "id": "a70c733d-5f5f-42c3-9e9e-f58d8dda0ad4",
+      "name": "Call 'REM 1'"
+    },
+    {
+      "parameters": {
+        "operation": "keys",
+        "keyPattern": "1"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        2912,
+        -656
+      ],
+      "id": "c1216a19-ad9c-4d91-9231-4f51c745882b",
+      "name": "Redis1",
+      "credentials": {
+        "redis": {
+          "id": "ZE1YPJ0hgCON4YE9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[yourprompt]",
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "[yourprompt]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        3136,
+        -656
+      ],
+      "id": "8c47e707-e651-418b-93a6-0e2f6dfd4c0f",
+      "name": "AI Agent2"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "google/gemini-3-flash-preview"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        3152,
+        -432
+      ],
+      "id": "8b7fd89e-2503-49b6-be6d-7da007c299d6",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "YlqXW7odkPDSxhhQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        3280,
+        -432
+      ],
+      "id": "e907ed4f-5122-45df-8ce0-86c2daf98059",
+      "name": "Google Gemini Chat Model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "W5iDcOpEY3u5RlOU",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "hLZDglI48z7QVzJH",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/hLZDglI48z7QVzJH",
+          "cachedResultName": "Write a memo"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "memocontent": "=[DATE AND TIME OF THE DAY SUMMARY: {{ $now }}]\n\n{{ $('AI Agent2').item.json.output.parseJson().long_summary }}",
+            "tags": "={{ $('AI Agent2').item.json.output.parseJson().tags }},day-summary"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "memocontent",
+              "displayName": "memocontent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        4192,
+        -656
+      ],
+      "id": "ea66f67a-9558-40d5-823d-a36ad4a9fa03",
+      "name": "Call 'Write a memo'"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "current-emotion"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "content": "N/A (sleeping)"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "dataname",
+              "displayName": "dataname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -272,
+        -656
+      ],
+      "id": "8c5ab3e2-fd08-489b-985e-b784b5d20e9e",
+      "name": "Update row(s)"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "tiredness"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "content": "0"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "dataname",
+              "displayName": "dataname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -48,
+        -656
+      ],
+      "id": "196171bb-1ecf-450a-a6ad-5c10a4306e8b",
+      "name": "Update row(s)1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "current-task"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "content": "sleeping"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "dataname",
+              "displayName": "dataname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        976,
+        -656
+      ],
+      "id": "10841c96-df58-44d7-83d6-c9c74159bebd",
+      "name": "Update row(s)2"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "HFb5rV4WptXzbCki",
+          "mode": "list",
+          "cachedResultName": "data-system",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/HFb5rV4WptXzbCki"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dataname",
+              "keyValue": "current-location"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "content": "bedroom"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "dataname",
+              "displayName": "dataname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        -656
+      ],
+      "id": "77d4e185-33e1-4964-879b-206e4337a789",
+      "name": "Update row(s)3"
+    },
+    {
+      "parameters": {
+        "mode": "load",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "lana-oai",
+          "mode": "list",
+          "cachedResultName": "lana-oai"
+        },
+        "prompt": "=action, {{ $now.toLocaleString() }}, relevant",
+        "topK": 20,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        176,
+        -656
+      ],
+      "id": "99e7dcc7-821d-4938-867b-3a05c0281250",
+      "name": "Qdrant Vector Store",
+      "credentials": {
+        "qdrantApi": {
+          "id": "YG57JCyTqfm71imn",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "mistral-embed-2312",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        256,
+        -432
+      ],
+      "id": "dfa2643d-9cb6-49bb-822b-52037bc0dae2",
+      "name": "Embeddings Mistral Cloud",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "EvEN1q0jCtLD6f3E",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "defe78a3-0235-47db-83a7-173aa842973c",
+              "leftValue": "={{ $json.document.pageContent }}",
+              "rightValue": "={{ $now.toFormat('yyyy-MM-dd') }}",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        528,
+        -656
+      ],
+      "id": "103433cb-5470-4561-86f2-b9a68385c893",
+      "name": "Filter",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e3c2b100-7df0-4b84-aecf-5e07c41df20c",
+              "name": "=itemsfound",
+              "value": "={{ $input.all() }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        752,
+        -656
+      ],
+      "id": "b674a1ea-8728-4837-9bdc-78cfce5351a1",
+      "name": "Edit Fields1",
+      "alwaysOutputData": false,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "mode": "delete",
+        "deleteMode": "all"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryManager",
+      "typeVersion": 1.1,
+      "position": [
+        3488,
+        -656
+      ],
+      "id": "70ff030d-da58-4dfd-bb6d-9ec2766a9ac6",
+      "name": "Chat Memory Manager"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "user",
+              "message": "=[MEMORY FROM LAST DAY, {{ $now }}] {{ $('AI Agent2').item.json.output.parseJson().short_summary }}"
+            },
+            {
+              "type": "ai",
+              "message": "[ACK]"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryManager",
+      "typeVersion": 1.1,
+      "position": [
+        3840,
+        -656
+      ],
+      "id": "461f26c8-06d5-4f13-a1e4-7acfa821920b",
+      "name": "Chat Memory Manager1"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "1"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryRedisChat",
+      "typeVersion": 1.5,
+      "position": [
+        3520,
+        -400
+      ],
+      "id": "d769b739-948f-4b0a-b86b-e9f0cfa8ac82",
+      "name": "Redis Chat Memory",
+      "credentials": {
+        "redis": {
+          "id": "ZE1YPJ0hgCON4YE9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "eventName": "NREM Done",
+        "distinctId": "Lana",
+        "additionalFields": {
+          "propertiesUi": {
+            "propertyValues": [
+              {
+                "key": "output1",
+                "value": "={{ $('AI Agent').item.json.output }}"
+              },
+              {
+                "key": "output2",
+                "value": "={{ $('AI Agent1').item.json.output }}"
+              },
+              {
+                "key": "output3",
+                "value": "={{ $('AI Agent2').item.json.output }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.postHog",
+      "typeVersion": 1,
+      "position": [
+        3408,
+        -1408
+      ],
+      "id": "a0501e7a-df73-4cba-bb84-600b2ed790cc",
+      "name": "Create an event",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postHogApi": {
+          "id": "uE1DlhWBT6cszbku",
+          "name": "PostHog account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Update row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [
+          {
+            "node": "Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Call 'Update prompt'": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Call 'REM 1'",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Redis1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'REM 1'": {
+      "main": [
+        []
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "AI Agent2": {
+      "main": [
+        [
+          {
+            "node": "Chat Memory Manager",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row(s)": {
+      "main": [
+        [
+          {
+            "node": "Update row(s)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row(s)1": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row(s)2": {
+      "main": [
+        [
+          {
+            "node": "Update row(s)3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row(s)3": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Mistral Cloud": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Vector Store": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Update row(s)2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Memory Manager": {
+      "main": [
+        [
+          {
+            "node": "Chat Memory Manager1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Memory Manager1": {
+      "main": [
+        [
+          {
+            "node": "Call 'Write a memo'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Chat Memory Manager",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Chat Memory Manager1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "a3ffa4ac-b1d9-4c61-aa12-3cada46e2ac1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a778a0d94b3958961fe34906fd90006f863d59efcaf8ca586dc3f0d6b0a34eb"
+  },
+  "id": "J9p3PYup808SIJ88",
+  "tags": [
+    {
+      "updatedAt": "2026-03-21T12:03:52.825Z",
+      "createdAt": "2026-03-21T12:03:52.825Z",
+      "id": "24LSzFxysu3aJmEV",
+      "name": "lana"
+    },
+    {
+      "updatedAt": "2026-03-21T20:05:57.934Z",
+      "createdAt": "2026-03-21T20:05:57.934Z",
+      "id": "83QlnQ6OaUK2Z7XX",
+      "name": "humanity"
+    },
+    {
+      "updatedAt": "2026-03-21T12:03:59.385Z",
+      "createdAt": "2026-03-21T12:03:59.385Z",
+      "id": "k2biWk2SNCxJ2LWk",
+      "name": "automation"
+    }
+  ]
+}

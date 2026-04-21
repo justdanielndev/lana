@@ -1,0 +1,326 @@
+{
+  "name": "New grade trigger",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5d2eef58-d409-4352-a3bd-8a03cbe301e9",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "[yourapiurl]",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "username",
+              "value": "={{ $env.EDUCAMOS_USERNAME }}"
+            },
+            {
+              "name": "password",
+              "value": "={{ $env.EDUCAMOS_PASSWORD }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "6c8ecb42-aa9b-48cf-b684-62555d12618c",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "fvg44JHhQEe78S0P",
+          "mode": "list",
+          "cachedResultName": "uqu",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/fvg44JHhQEe78S0P"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "1"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        416,
+        0
+      ],
+      "id": "26ee900f-e081-4e3e-9890-545b6e216a26",
+      "name": "Get row(s)"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "fvg44JHhQEe78S0P",
+          "mode": "list",
+          "cachedResultName": "uqu",
+          "cachedResultUrl": "/projects/taWEEAmWMerJQ2Dp/datatables/fvg44JHhQEe78S0P"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "1"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "data": "={{ $('HTTP Request').item.json.data.toJsonString() }}"
+          },
+          "matchingColumns": [
+            "data"
+          ],
+          "schema": [
+            {
+              "id": "data",
+              "displayName": "data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        864,
+        144
+      ],
+      "id": "652bf3b3-fd6c-4090-9a51-92e798156082",
+      "name": "Update row(s)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "20b3e50b-c3ba-4eb6-bff4-d1dbd14a63eb",
+              "leftValue": "={{ $json.data }}",
+              "rightValue": "={{ $('HTTP Request').item.json.data.toJsonString() }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        0
+      ],
+      "id": "8a9d02d8-c449-499d-a4cc-8c09b92edb5e",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "minutesSaved": 4
+      },
+      "type": "n8n-nodes-base.timeSaved",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        32
+      ],
+      "id": "0827c7da-687b-421f-8c7c-95b458809327",
+      "name": "Time Saved"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "HrMlXq5vwEDCd4Sm",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/HrMlXq5vwEDCd4Sm",
+          "cachedResultName": "Task orchestrator"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "datainput": "[yourprompt]"
+          },
+          "matchingColumns": [
+            "datainput"
+          ],
+          "schema": [
+            {
+              "id": "datainput",
+              "displayName": "datainput",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1072,
+        144
+      ],
+      "id": "bab94db7-c5b1-4534-bde9-4d70f456d9bc",
+      "name": "Call 'Task orchestrator'"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row(s)": {
+      "main": [
+        [
+          {
+            "node": "Call 'Task orchestrator'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Update row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Task orchestrator'": {
+      "main": [
+        [
+          {
+            "node": "Time Saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "dynamic",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false,
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedPerExecution": 7
+  },
+  "versionId": "3fd3ebee-ad61-44b7-be36-9c95a20c0594",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a778a0d94b3958961fe34906fd90006f863d59efcaf8ca586dc3f0d6b0a34eb"
+  },
+  "id": "EpcVxFEqv9K3HL4M",
+  "tags": [
+    {
+      "updatedAt": "2026-03-21T12:08:09.745Z",
+      "createdAt": "2026-03-21T12:08:09.745Z",
+      "id": "ozUTLHRAb5LFGwZv",
+      "name": "task trigger"
+    },
+    {
+      "updatedAt": "2026-03-21T12:03:52.825Z",
+      "createdAt": "2026-03-21T12:03:52.825Z",
+      "id": "24LSzFxysu3aJmEV",
+      "name": "lana"
+    }
+  ]
+}
